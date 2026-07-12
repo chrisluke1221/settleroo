@@ -1,4 +1,4 @@
-# RoomTab - Split Bills with Friends
+# RoomTab - Split Bills at ease
 
 A modern web application for managing shared expenses with roommates and friends. RoomTab makes it easy to track who owes what and settle up without the awkward conversations.
 
