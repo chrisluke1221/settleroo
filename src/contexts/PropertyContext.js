@@ -111,19 +111,53 @@ export const PropertyProvider = ({ children }) => {
         bill.billing_period_start,
         bill.billing_period_end,
         bill.total_amount
-      ).map((s) => ({ ...s, bill_id: billId, landlord_id: user.id }));
+      );
 
-      const { error: deleteError } = await supabase.from('bill_splits').delete().eq('bill_id', billId);
-      if (deleteError) throw deleteError;
+      const existingByTenantId = new Map(
+        billSplits.filter((s) => s.bill_id === billId).map((s) => [s.tenant_id, s])
+      );
+      const newTenantIds = new Set(newSplits.map((s) => s.tenant_id));
 
-      let insertedSplits = [];
-      if (newSplits.length > 0) {
-        const { data, error: insertError } = await supabase.from('bill_splits').insert(newSplits).select();
+      const toUpdate = newSplits.filter((s) => existingByTenantId.has(s.tenant_id));
+      const toInsert = newSplits
+        .filter((s) => !existingByTenantId.has(s.tenant_id))
+        .map((s) => ({ ...s, bill_id: billId, landlord_id: user.id }));
+      const toDeleteIds = [...existingByTenantId.values()]
+        .filter((s) => !newTenantIds.has(s.tenant_id))
+        .map((s) => s.id);
+
+      // Existing rows keep their id/access_token/status/email_sent_at — only
+      // the recomputed numbers change, so previously shared tenant links and
+      // paid/viewed status survive a tenant list change.
+      const updatedRows = await Promise.all(
+        toUpdate.map(async (s) => {
+          const existing = existingByTenantId.get(s.tenant_id);
+          const { tenant_id, ...fields } = s;
+          const { data, error } = await supabase
+            .from('bill_splits')
+            .update(fields)
+            .eq('id', existing.id)
+            .select()
+            .single();
+          if (error) throw error;
+          return data;
+        })
+      );
+
+      let insertedRows = [];
+      if (toInsert.length > 0) {
+        const { data, error: insertError } = await supabase.from('bill_splits').insert(toInsert).select();
         if (insertError) throw insertError;
-        insertedSplits = data;
+        insertedRows = data;
       }
 
-      setBillSplits((prev) => [...prev.filter((s) => s.bill_id !== billId), ...insertedSplits]);
+      if (toDeleteIds.length > 0) {
+        const { error: deleteError } = await supabase.from('bill_splits').delete().in('id', toDeleteIds);
+        if (deleteError) throw deleteError;
+      }
+
+      const newBillSplitRows = [...updatedRows, ...insertedRows];
+      setBillSplits((prev) => [...prev.filter((s) => s.bill_id !== billId), ...newBillSplitRows]);
     }
   };
 
