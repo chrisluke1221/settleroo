@@ -61,68 +61,11 @@ const Footer = () => {
               </li>
               <li>
                 <Link
-                  to="/dashboard"
+                  to="/properties"
                   className="text-secondary-600 hover:text-secondary-900 transition-colors duration-200"
                 >
-                  Dashboard
+                  Properties
                 </Link>
-              </li>
-              <li>
-                <Link
-                  to="/create-room"
-                  className="text-secondary-600 hover:text-secondary-900 transition-colors duration-200"
-                >
-                  Create Room
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/join-room"
-                  className="text-secondary-600 hover:text-secondary-900 transition-colors duration-200"
-                >
-                  Join Room
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          {/* Support */}
-          <div>
-            <h3 className="text-sm font-semibold text-secondary-900 uppercase tracking-wider mb-4">
-              Support
-            </h3>
-            <ul className="space-y-2">
-              <li>
-                <a
-                  href="/help"
-                  className="text-secondary-600 hover:text-secondary-900 transition-colors duration-200"
-                >
-                  Help Center
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/privacy"
-                  className="text-secondary-600 hover:text-secondary-900 transition-colors duration-200"
-                >
-                  Privacy Policy
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/terms"
-                  className="text-secondary-600 hover:text-secondary-900 transition-colors duration-200"
-                >
-                  Terms of Service
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/contact"
-                  className="text-secondary-600 hover:text-secondary-900 transition-colors duration-200"
-                >
-                  Contact Us
-                </a>
               </li>
             </ul>
           </div>
