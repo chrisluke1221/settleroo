@@ -53,10 +53,16 @@ const PropertyDetail = () => {
     );
   }
 
+  const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
   const handleTenantSubmit = async (e) => {
     e.preventDefault();
     if (!tenantForm.name.trim() || !tenantForm.room.trim() || !tenantForm.moveInDate) {
       setTenantError('Name, room, and move-in date are required');
+      return;
+    }
+    if (tenantForm.email.trim() && !EMAIL_PATTERN.test(tenantForm.email.trim())) {
+      setTenantError('That email address doesn\'t look valid');
       return;
     }
     setTenantSubmitting(true);
