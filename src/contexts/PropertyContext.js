@@ -12,6 +12,39 @@ export const useProperties = () => {
   return context;
 };
 
+const computeSplits = (propertyTenants, periodStart, periodEnd, totalAmount) => {
+  const start = new Date(periodStart);
+  const end = new Date(periodEnd);
+
+  const perTenantDays = propertyTenants
+    .map((tenant) => {
+      const moveIn = new Date(tenant.move_in_date);
+      const moveOut = tenant.move_out_date ? new Date(tenant.move_out_date) : null;
+      const occStart = moveIn > start ? moveIn : start;
+      const occEnd = moveOut && moveOut < end ? moveOut : end;
+      const occupancyDays = Math.max(0, Math.round((occEnd - occStart) / 86400000) + 1);
+      const personDays = occupancyDays * (tenant.number_of_occupants || 1);
+      return { tenant, occStart, occEnd, occupancyDays, personDays };
+    })
+    .filter((t) => t.personDays > 0);
+
+  const totalPersonDays = perTenantDays.reduce((sum, t) => sum + t.personDays, 0);
+  if (totalPersonDays === 0) return [];
+
+  return perTenantDays.map(({ tenant, occStart, occEnd, occupancyDays, personDays }) => ({
+    tenant_id: tenant.id,
+    tenant_name: tenant.name,
+    room: tenant.room,
+    number_of_occupants: tenant.number_of_occupants || 1,
+    occupancy_days: occupancyDays,
+    person_days: personDays,
+    percentage: Math.round((personDays / totalPersonDays) * 10000) / 100,
+    owed_amount: Math.round((personDays / totalPersonDays) * totalAmount * 100) / 100,
+    occupancy_start: occStart.toISOString().slice(0, 10),
+    occupancy_end: occEnd.toISOString().slice(0, 10),
+  }));
+};
+
 export const PropertyProvider = ({ children }) => {
   const { user } = useAuth();
   const [properties, setProperties] = useState([]);
@@ -57,6 +90,43 @@ export const PropertyProvider = ({ children }) => {
     refresh().catch((err) => console.error('Failed to load property data:', err));
   }, [refresh]);
 
+  // Bills don't carry property_id directly, so a bill "belongs" to a property
+  // through the tenants its existing splits point at. Any bill that already
+  // splits across one of this property's tenants gets recomputed.
+  const recalcBillsForProperty = async (propertyId, currentPropertyTenants) => {
+    const propertyTenantIds = new Set(
+      tenants.filter((t) => t.property_id === propertyId).map((t) => t.id)
+    );
+    const affectedBillIds = [
+      ...new Set(billSplits.filter((s) => propertyTenantIds.has(s.tenant_id)).map((s) => s.bill_id)),
+    ];
+    if (affectedBillIds.length === 0) return;
+
+    for (const billId of affectedBillIds) {
+      const bill = bills.find((b) => b.id === billId);
+      if (!bill) continue;
+
+      const newSplits = computeSplits(
+        currentPropertyTenants,
+        bill.billing_period_start,
+        bill.billing_period_end,
+        bill.total_amount
+      ).map((s) => ({ ...s, bill_id: billId, landlord_id: user.id }));
+
+      const { error: deleteError } = await supabase.from('bill_splits').delete().eq('bill_id', billId);
+      if (deleteError) throw deleteError;
+
+      let insertedSplits = [];
+      if (newSplits.length > 0) {
+        const { data, error: insertError } = await supabase.from('bill_splits').insert(newSplits).select();
+        if (insertError) throw insertError;
+        insertedSplits = data;
+      }
+
+      setBillSplits((prev) => [...prev.filter((s) => s.bill_id !== billId), ...insertedSplits]);
+    }
+  };
+
   const createProperty = async ({ name, address, description }) => {
     const { data, error } = await supabase
       .from('properties')
@@ -92,6 +162,12 @@ export const PropertyProvider = ({ children }) => {
       .single();
     if (error) throw error;
     setTenants((prev) => [data, ...prev]);
+
+    const currentPropertyTenants = [...tenants.filter((t) => t.property_id === propertyId), data];
+    await recalcBillsForProperty(propertyId, currentPropertyTenants).catch((err) =>
+      console.error('Failed to recalculate bills after adding tenant:', err)
+    );
+
     return data;
   };
 
@@ -104,36 +180,41 @@ export const PropertyProvider = ({ children }) => {
       .single();
     if (error) throw error;
     setTenants((prev) => prev.map((t) => (t.id === tenantId ? data : t)));
+
+    const currentPropertyTenants = tenants
+      .map((t) => (t.id === tenantId ? data : t))
+      .filter((t) => t.property_id === data.property_id);
+    await recalcBillsForProperty(data.property_id, currentPropertyTenants).catch((err) =>
+      console.error('Failed to recalculate bills after updating tenant:', err)
+    );
+
     return data;
   };
 
   const deleteTenant = async (tenantId) => {
+    const tenant = tenants.find((t) => t.id === tenantId);
     const { error } = await supabase.from('tenants').delete().eq('id', tenantId);
     if (error) throw error;
     setTenants((prev) => prev.filter((t) => t.id !== tenantId));
+
+    if (tenant) {
+      const currentPropertyTenants = tenants.filter(
+        (t) => t.property_id === tenant.property_id && t.id !== tenantId
+      );
+      await recalcBillsForProperty(tenant.property_id, currentPropertyTenants).catch((err) =>
+        console.error('Failed to recalculate bills after removing tenant:', err)
+      );
+    }
   };
 
-  const createBillWithSplits = async ({ propertyId, billType, totalAmount, periodStart, periodEnd }) => {
+  const createBillWithSplits = async ({ propertyId, billType, totalAmount, periodStart, periodEnd, dueDate }) => {
     const propertyTenants = tenants.filter((t) => t.property_id === propertyId);
     if (propertyTenants.length === 0) {
       throw new Error('This property has no tenants to split the bill across.');
     }
 
-    const start = new Date(periodStart);
-    const end = new Date(periodEnd);
-
-    const perTenantDays = propertyTenants.map((tenant) => {
-      const moveIn = new Date(tenant.move_in_date);
-      const moveOut = tenant.move_out_date ? new Date(tenant.move_out_date) : null;
-      const occStart = moveIn > start ? moveIn : start;
-      const occEnd = moveOut && moveOut < end ? moveOut : end;
-      const occupancyDays = Math.max(0, Math.round((occEnd - occStart) / 86400000) + 1);
-      const personDays = occupancyDays * (tenant.number_of_occupants || 1);
-      return { tenant, occStart, occEnd, occupancyDays, personDays };
-    });
-
-    const totalPersonDays = perTenantDays.reduce((sum, t) => sum + t.personDays, 0);
-    if (totalPersonDays === 0) {
+    const splits = computeSplits(propertyTenants, periodStart, periodEnd, totalAmount);
+    if (splits.length === 0) {
       throw new Error('No tenant occupancy overlaps this billing period.');
     }
 
@@ -144,36 +225,24 @@ export const PropertyProvider = ({ children }) => {
         total_amount: totalAmount,
         billing_period_start: periodStart,
         billing_period_end: periodEnd,
+        due_date: dueDate || null,
         landlord_id: user.id,
       })
       .select()
       .single();
     if (billError) throw billError;
 
-    const splitsToInsert = perTenantDays.map(({ tenant, occStart, occEnd, occupancyDays, personDays }) => ({
-      bill_id: bill.id,
-      tenant_id: tenant.id,
-      tenant_name: tenant.name,
-      room: tenant.room,
-      number_of_occupants: tenant.number_of_occupants || 1,
-      occupancy_days: occupancyDays,
-      person_days: personDays,
-      percentage: Math.round((personDays / totalPersonDays) * 10000) / 100,
-      owed_amount: Math.round((personDays / totalPersonDays) * totalAmount * 100) / 100,
-      occupancy_start: occStart.toISOString().slice(0, 10),
-      occupancy_end: occEnd.toISOString().slice(0, 10),
-      landlord_id: user.id,
-    }));
+    const splitsToInsert = splits.map((s) => ({ ...s, bill_id: bill.id, landlord_id: user.id }));
 
-    const { data: splits, error: splitsError } = await supabase
+    const { data: insertedSplits, error: splitsError } = await supabase
       .from('bill_splits')
       .insert(splitsToInsert)
       .select();
     if (splitsError) throw splitsError;
 
     setBills((prev) => [bill, ...prev]);
-    setBillSplits((prev) => [...prev, ...splits]);
-    return { bill, splits };
+    setBillSplits((prev) => [...prev, ...insertedSplits]);
+    return { bill, splits: insertedSplits };
   };
 
   const deleteBill = async (billId) => {
@@ -183,6 +252,24 @@ export const PropertyProvider = ({ children }) => {
     setBillSplits((prev) => prev.filter((s) => s.bill_id !== billId));
   };
 
+  const setBillSplitStatus = async (splitId, status) => {
+    const updates = { status };
+    if (status === 'paid') updates.paid_at = new Date().toISOString();
+    if (status === 'pending') {
+      updates.paid_at = null;
+      updates.viewed_at = null;
+    }
+    const { data, error } = await supabase
+      .from('bill_splits')
+      .update(updates)
+      .eq('id', splitId)
+      .select()
+      .single();
+    if (error) throw error;
+    setBillSplits((prev) => prev.map((s) => (s.id === splitId ? data : s)));
+    return data;
+  };
+
   const value = {
     properties,
     tenants,
@@ -190,6 +277,7 @@ export const PropertyProvider = ({ children }) => {
     billSplits,
     loading,
     refresh,
+    setBillSplitStatus,
     createProperty,
     deleteProperty,
     createTenant,

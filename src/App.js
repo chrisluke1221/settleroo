@@ -7,6 +7,7 @@ import Home from './pages/Home';
 import Properties from './pages/Properties';
 import PropertyDetail from './pages/PropertyDetail';
 import Login from './pages/Login';
+import TenantBillView from './pages/TenantBillView';
 import { PropertyProvider } from './contexts/PropertyContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
@@ -34,6 +35,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/" element={<PageTransition><Home /></PageTransition>} />
         <Route path="/login" element={<PageTransition><Login /></PageTransition>} />
+        <Route path="/bill/:token" element={<PageTransition><TenantBillView /></PageTransition>} />
         <Route
           path="/properties"
           element={

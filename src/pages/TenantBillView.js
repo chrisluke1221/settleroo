@@ -1,0 +1,127 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
+import { CheckCircle, Receipt, Calendar } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
+
+const TenantBillView = () => {
+  const { token } = useParams();
+  const [split, setSplit] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [confirming, setConfirming] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    const { data, error: rpcError } = await supabase.rpc('get_bill_split_by_token', { p_token: token });
+    if (rpcError || !data || data.length === 0) {
+      setError('This bill link is invalid or has expired.');
+      setLoading(false);
+      return;
+    }
+    setSplit(data[0]);
+    setLoading(false);
+
+    if (data[0].status === 'pending') {
+      await supabase.rpc('mark_bill_split_viewed', { p_token: token });
+    }
+  }, [token]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const handleConfirmPaid = async () => {
+    setConfirming(true);
+    const { error: rpcError } = await supabase.rpc('mark_bill_split_paid', { p_token: token });
+    if (!rpcError) {
+      setSplit((prev) => ({ ...prev, status: 'paid', paid_at: new Date().toISOString() }));
+    }
+    setConfirming(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-secondary-600">Loading...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="card max-w-md w-full text-center">
+          <p className="text-red-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-4 py-12">
+      <div className="card max-w-md w-full">
+        <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center mb-4">
+          <Receipt className="w-6 h-6 text-primary-600" />
+        </div>
+        <h1 className="text-2xl font-bold text-secondary-900 capitalize mb-1">{split.bill_type} Bill</h1>
+        <p className="text-secondary-600 mb-6">
+          {split.billing_period_start} to {split.billing_period_end}
+        </p>
+
+        <div className="bg-secondary-50 rounded-lg p-4 mb-6 space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-secondary-600">Tenant</span>
+            <span className="font-medium text-secondary-900">{split.tenant_name}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-secondary-600">Room</span>
+            <span className="font-medium text-secondary-900">{split.room}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-secondary-600">Share of total bill</span>
+            <span className="font-medium text-secondary-900">{split.percentage}%</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-secondary-600">Total bill amount</span>
+            <span className="font-medium text-secondary-900">${Number(split.total_amount).toFixed(2)}</span>
+          </div>
+          <div className="border-t border-secondary-200 pt-2 flex justify-between">
+            <span className="font-semibold text-secondary-900">You owe</span>
+            <span className="font-bold text-primary-600 text-lg">${Number(split.owed_amount).toFixed(2)}</span>
+          </div>
+        </div>
+
+        {split.due_date && (
+          <p className="flex items-center text-sm text-secondary-600 mb-6">
+            <Calendar className="w-4 h-4 mr-2" />
+            Due {split.due_date}
+          </p>
+        )}
+
+        {split.status === 'paid' ? (
+          <div className="flex items-center justify-center space-x-2 bg-green-50 border border-green-200 rounded-lg py-3">
+            <CheckCircle className="w-5 h-5 text-green-600" />
+            <span className="text-green-700 font-medium">You've confirmed this as paid</span>
+          </div>
+        ) : (
+          <button
+            onClick={handleConfirmPaid}
+            disabled={confirming}
+            className="btn-primary w-full flex items-center justify-center space-x-2"
+          >
+            <CheckCircle className="w-4 h-4" />
+            <span>{confirming ? 'Confirming...' : "I've Paid This"}</span>
+          </button>
+        )}
+
+        <p className="text-xs text-secondary-400 mt-4 text-center">
+          This confirms you've settled the amount directly with your landlord (e.g. bank transfer). It does not
+          process a payment.
+        </p>
+      </div>
+    </div>
+  );
+};
+
+export default TenantBillView;

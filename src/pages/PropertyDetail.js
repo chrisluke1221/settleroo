@@ -1,15 +1,30 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, Receipt, Users } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Receipt, Users, Copy, RotateCcw, CheckCircle2 } from 'lucide-react';
 import { useProperties } from '../contexts/PropertyContext';
 
 const emptyTenant = { name: '', email: '', phone: '', room: '', moveInDate: '', numberOfOccupants: 1 };
-const emptyBill = { billType: 'utilities', totalAmount: '', periodStart: '', periodEnd: '' };
+const emptyBill = { billType: 'utilities', totalAmount: '', periodStart: '', periodEnd: '', dueDate: '' };
+
+const STATUS_STYLES = {
+  pending: 'bg-secondary-100 text-secondary-600',
+  viewed: 'bg-yellow-100 text-yellow-700',
+  paid: 'bg-green-100 text-green-700',
+};
 
 const PropertyDetail = () => {
   const { propertyId } = useParams();
-  const { properties, tenants, bills, billSplits, createTenant, deleteTenant, createBillWithSplits, deleteBill } =
-    useProperties();
+  const {
+    properties,
+    tenants,
+    bills,
+    billSplits,
+    createTenant,
+    deleteTenant,
+    createBillWithSplits,
+    deleteBill,
+    setBillSplitStatus,
+  } = useProperties();
 
   const property = properties.find((p) => p.id === propertyId);
   const propertyTenants = tenants.filter((t) => t.property_id === propertyId);
@@ -73,6 +88,7 @@ const PropertyDetail = () => {
         totalAmount: parseFloat(billForm.totalAmount),
         periodStart: billForm.periodStart,
         periodEnd: billForm.periodEnd,
+        dueDate: billForm.dueDate || null,
       });
       setBillForm(emptyBill);
       setShowBillForm(false);
@@ -236,6 +252,15 @@ const PropertyDetail = () => {
                 value={billForm.periodEnd}
                 onChange={(e) => setBillForm((p) => ({ ...p, periodEnd: e.target.value }))}
               />
+              <div>
+                <label className="block text-xs text-secondary-500 mb-1">Due date (optional)</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  value={billForm.dueDate}
+                  onChange={(e) => setBillForm((p) => ({ ...p, dueDate: e.target.value }))}
+                />
+              </div>
             </div>
             {billError && <p className="text-red-600 text-sm">{billError}</p>}
             <div className="flex space-x-3">
@@ -264,6 +289,7 @@ const PropertyDetail = () => {
                       </p>
                       <p className="text-sm text-secondary-500">
                         {bill.billing_period_start} to {bill.billing_period_end}
+                        {bill.due_date && <> &middot; Due {bill.due_date}</>}
                       </p>
                     </div>
                     <button onClick={() => deleteBill(bill.id)} className="text-secondary-300 hover:text-red-500">
@@ -275,9 +301,10 @@ const PropertyDetail = () => {
                       <tr className="text-left text-secondary-500 border-b border-secondary-200">
                         <th className="py-1">Tenant</th>
                         <th className="py-1">Room</th>
-                        <th className="py-1">Person-days</th>
                         <th className="py-1">%</th>
                         <th className="py-1 text-right">Owed</th>
+                        <th className="py-1 text-center">Status</th>
+                        <th className="py-1 text-right">Link</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -285,9 +312,47 @@ const PropertyDetail = () => {
                         <tr key={split.id} className="border-b border-secondary-100 last:border-0">
                           <td className="py-1">{split.tenant_name}</td>
                           <td className="py-1">{split.room}</td>
-                          <td className="py-1">{split.person_days}</td>
                           <td className="py-1">{split.percentage}%</td>
                           <td className="py-1 text-right font-medium">${Number(split.owed_amount).toFixed(2)}</td>
+                          <td className="py-1 text-center">
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
+                                STATUS_STYLES[split.status] || STATUS_STYLES.pending
+                              }`}
+                            >
+                              {split.status || 'pending'}
+                            </span>
+                          </td>
+                          <td className="py-1 text-right">
+                            <div className="flex items-center justify-end space-x-2">
+                              <button
+                                title="Copy tenant link"
+                                onClick={() =>
+                                  navigator.clipboard.writeText(`${window.location.origin}/bill/${split.access_token}`)
+                                }
+                                className="text-secondary-400 hover:text-primary-600"
+                              >
+                                <Copy className="w-4 h-4" />
+                              </button>
+                              {split.status === 'paid' ? (
+                                <button
+                                  title="Reset to pending"
+                                  onClick={() => setBillSplitStatus(split.id, 'pending')}
+                                  className="text-secondary-400 hover:text-secondary-700"
+                                >
+                                  <RotateCcw className="w-4 h-4" />
+                                </button>
+                              ) : (
+                                <button
+                                  title="Mark as paid"
+                                  onClick={() => setBillSplitStatus(split.id, 'paid')}
+                                  className="text-secondary-400 hover:text-green-600"
+                                >
+                                  <CheckCircle2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
