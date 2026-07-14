@@ -316,6 +316,50 @@ export const PropertyProvider = ({ children }) => {
     return data;
   };
 
+  const uploadBillAttachment = async (billId, file) => {
+    const extension = file.name.split('.').pop();
+    const path = `${billId}/${Date.now()}.${extension}`;
+
+    const { error: uploadError } = await supabase.storage.from('bill-attachments').upload(path, file, {
+      contentType: file.type,
+      upsert: false,
+    });
+    if (uploadError) throw uploadError;
+
+    const { data, error } = await supabase
+      .from('bills')
+      .update({ attachment_path: path, attachment_name: file.name, attachment_type: file.type })
+      .eq('id', billId)
+      .select()
+      .single();
+    if (error) throw error;
+
+    setBills((prev) => prev.map((b) => (b.id === billId ? data : b)));
+    return data;
+  };
+
+  const removeBillAttachment = async (billId) => {
+    const bill = bills.find((b) => b.id === billId);
+    if (bill?.attachment_path) {
+      await supabase.storage.from('bill-attachments').remove([bill.attachment_path]);
+    }
+    const { data, error } = await supabase
+      .from('bills')
+      .update({ attachment_path: null, attachment_name: null, attachment_type: null })
+      .eq('id', billId)
+      .select()
+      .single();
+    if (error) throw error;
+    setBills((prev) => prev.map((b) => (b.id === billId ? data : b)));
+    return data;
+  };
+
+  const getBillAttachmentUrl = (attachmentPath) => {
+    if (!attachmentPath) return null;
+    const { data } = supabase.storage.from('bill-attachments').getPublicUrl(attachmentPath);
+    return data.publicUrl;
+  };
+
   const value = {
     properties,
     tenants,
@@ -325,6 +369,9 @@ export const PropertyProvider = ({ children }) => {
     refresh,
     setBillSplitStatus,
     sendBillEmail,
+    uploadBillAttachment,
+    removeBillAttachment,
+    getBillAttachmentUrl,
     createProperty,
     deleteProperty,
     createTenant,

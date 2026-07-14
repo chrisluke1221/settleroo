@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, Receipt, Users, Copy, RotateCcw, CheckCircle2, Mail, MailCheck, Pencil } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Receipt, Users, Copy, ExternalLink, RotateCcw, CheckCircle2, Mail, MailCheck, Pencil, Paperclip, X } from 'lucide-react';
 import { useProperties } from '../contexts/PropertyContext';
 
 const emptyTenant = { name: '', email: '', phone: '', room: '', moveInDate: '', numberOfOccupants: 1 };
@@ -26,10 +26,44 @@ const PropertyDetail = () => {
     deleteBill,
     setBillSplitStatus,
     sendBillEmail,
+    uploadBillAttachment,
+    removeBillAttachment,
+    getBillAttachmentUrl,
   } = useProperties();
 
   const [sendingSplitId, setSendingSplitId] = useState(null);
   const [emailError, setEmailError] = useState('');
+  const [uploadingBillId, setUploadingBillId] = useState(null);
+  const [attachmentError, setAttachmentError] = useState('');
+
+  const ALLOWED_ATTACHMENT_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
+  const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB
+
+  const handleAttachmentChange = async (billId, e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
+      setAttachmentError('Only PNG, JPEG, WebP images or PDF files are allowed.');
+      return;
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setAttachmentError('File must be under 10MB.');
+      return;
+    }
+
+    setAttachmentError('');
+    setUploadingBillId(billId);
+    try {
+      await uploadBillAttachment(billId, file);
+    } catch (err) {
+      console.error('Failed to upload attachment:', err);
+      setAttachmentError(err.message || 'Failed to upload attachment');
+    } finally {
+      setUploadingBillId(null);
+    }
+  };
 
   const tenantById = (tenantId) => tenants.find((t) => t.id === tenantId);
 
@@ -380,6 +414,43 @@ const PropertyDetail = () => {
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
+
+                  <div className="mb-4 flex items-center space-x-3 text-sm">
+                    {bill.attachment_path ? (
+                      <>
+                        <a
+                          href={getBillAttachmentUrl(bill.attachment_path)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center space-x-1 text-primary-600 hover:text-primary-700"
+                        >
+                          <Paperclip className="w-4 h-4" />
+                          <span>{bill.attachment_name || 'View attachment'}</span>
+                        </a>
+                        <button
+                          onClick={() => removeBillAttachment(bill.id)}
+                          className="text-secondary-300 hover:text-red-500"
+                          title="Remove attachment"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <label className="inline-flex items-center space-x-1 text-secondary-500 hover:text-primary-600 cursor-pointer">
+                        <Paperclip className="w-4 h-4" />
+                        <span>{uploadingBillId === bill.id ? 'Uploading...' : 'Attach bill (image/PDF)'}</span>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,application/pdf"
+                          className="hidden"
+                          disabled={uploadingBillId === bill.id}
+                          onChange={(e) => handleAttachmentChange(bill.id, e)}
+                        />
+                      </label>
+                    )}
+                  </div>
+                  {attachmentError && <p className="text-red-600 text-xs mb-3">{attachmentError}</p>}
+
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-secondary-500 border-b border-secondary-200">
@@ -410,6 +481,15 @@ const PropertyDetail = () => {
                           </td>
                           <td className="py-1 text-right">
                             <div className="flex items-center justify-end space-x-2">
+                              <a
+                                href={`/bill/${split.access_token}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="View bill breakdown"
+                                className="text-secondary-400 hover:text-primary-600"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
                               <button
                                 title="Copy tenant link"
                                 onClick={() =>

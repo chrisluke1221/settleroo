@@ -1,27 +1,43 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+const jsonResponse = (body, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
   try {
     const { splitId } = await req.json();
     if (!splitId) {
-      return new Response(JSON.stringify({ error: 'splitId is required' }), { status: 400 });
+      return jsonResponse({ error: 'splitId is required' }, 400);
     }
 
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Missing authorization' }), { status: 401 });
+      return jsonResponse({ error: 'Missing authorization' }, 401);
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
 
     const callerClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: userData, error: userError } = await callerClient.auth.getUser();
     if (userError || !userData.user) {
-      return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401 });
+      return jsonResponse({ error: 'Invalid session' }, 401);
     }
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
@@ -33,21 +49,21 @@ Deno.serve(async (req) => {
       .single();
 
     if (splitError || !split) {
-      return new Response(JSON.stringify({ error: 'Bill split not found' }), { status: 404 });
+      return jsonResponse({ error: 'Bill split not found' }, 404);
     }
 
     if (split.landlord_id !== userData.user.id) {
-      return new Response(JSON.stringify({ error: 'Not authorized for this bill' }), { status: 403 });
+      return jsonResponse({ error: 'Not authorized for this bill' }, 403);
     }
 
     const tenantEmail = split.tenants?.email;
     if (!tenantEmail) {
-      return new Response(JSON.stringify({ error: 'This tenant has no email on file' }), { status: 400 });
+      return jsonResponse({ error: 'This tenant has no email on file' }, 400);
     }
 
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
     if (!resendApiKey) {
-      return new Response(JSON.stringify({ error: 'Email service not configured' }), { status: 500 });
+      return jsonResponse({ error: 'Email service not configured' }, 500);
     }
 
     const appUrl = Deno.env.get('APP_URL') ?? 'https://roomietab.netlify.app';
@@ -87,7 +103,7 @@ Deno.serve(async (req) => {
 
     if (!resendRes.ok) {
       const errBody = await resendRes.text();
-      return new Response(JSON.stringify({ error: 'Failed to send email', details: errBody }), { status: 502 });
+      return jsonResponse({ error: 'Failed to send email', details: errBody }, 502);
     }
 
     await adminClient
@@ -95,11 +111,8 @@ Deno.serve(async (req) => {
       .update({ email_sent_at: new Date().toISOString() })
       .eq('id', splitId);
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ success: true });
   } catch (err) {
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), { status: 500 });
+    return jsonResponse({ error: err instanceof Error ? err.message : String(err) }, 500);
   }
 });

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { CheckCircle, Receipt, Calendar, Users, CalendarDays } from 'lucide-react';
+import { CheckCircle, Receipt, Calendar, Users, CalendarDays, Paperclip } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 
 const TenantBillView = () => {
@@ -152,10 +152,22 @@ const TenantBillView = () => {
         </div>
 
         {split.due_date && (
-          <p className="flex items-center text-sm text-secondary-600 mb-6">
+          <p className="flex items-center text-sm text-secondary-600 mb-4">
             <Calendar className="w-4 h-4 mr-2" />
             Due {split.due_date}
           </p>
+        )}
+
+        {split.attachment_path && (
+          <a
+            href={supabase.storage.from('bill-attachments').getPublicUrl(split.attachment_path).data.publicUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center text-sm text-primary-600 hover:text-primary-700 mb-6"
+          >
+            <Paperclip className="w-4 h-4 mr-2" />
+            View original bill ({split.attachment_name || 'attachment'})
+          </a>
         )}
 
         {split.status === 'paid' ? (
