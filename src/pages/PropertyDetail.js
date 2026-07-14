@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, Receipt, Users, Copy, RotateCcw, CheckCircle2, Mail, MailCheck } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Receipt, Users, Copy, RotateCcw, CheckCircle2, Mail, MailCheck, Pencil } from 'lucide-react';
 import { useProperties } from '../contexts/PropertyContext';
 
 const emptyTenant = { name: '', email: '', phone: '', room: '', moveInDate: '', numberOfOccupants: 1 };
@@ -20,6 +20,7 @@ const PropertyDetail = () => {
     bills,
     billSplits,
     createTenant,
+    updateTenant,
     deleteTenant,
     createBillWithSplits,
     deleteBill,
@@ -60,6 +61,7 @@ const PropertyDetail = () => {
   const [tenantForm, setTenantForm] = useState(emptyTenant);
   const [tenantError, setTenantError] = useState('');
   const [tenantSubmitting, setTenantSubmitting] = useState(false);
+  const [editingTenantId, setEditingTenantId] = useState(null);
 
   const [showBillForm, setShowBillForm] = useState(false);
   const [billForm, setBillForm] = useState(emptyBill);
@@ -92,15 +94,48 @@ const PropertyDetail = () => {
     setTenantSubmitting(true);
     setTenantError('');
     try {
-      await createTenant({ propertyId, ...tenantForm });
+      if (editingTenantId) {
+        await updateTenant(editingTenantId, {
+          name: tenantForm.name.trim(),
+          email: tenantForm.email.trim() || null,
+          phone: tenantForm.phone.trim() || null,
+          room: tenantForm.room.trim(),
+          move_in_date: tenantForm.moveInDate,
+          number_of_occupants: tenantForm.numberOfOccupants,
+        });
+      } else {
+        await createTenant({ propertyId, ...tenantForm });
+      }
       setTenantForm(emptyTenant);
+      setEditingTenantId(null);
       setShowTenantForm(false);
     } catch (err) {
-      console.error('Failed to add tenant:', err);
-      setTenantError(err.message || 'Failed to add tenant');
+      console.error('Failed to save tenant:', err);
+      setTenantError(err.message || 'Failed to save tenant');
     } finally {
       setTenantSubmitting(false);
     }
+  };
+
+  const handleEditTenant = (tenant) => {
+    setTenantForm({
+      name: tenant.name,
+      email: tenant.email || '',
+      phone: tenant.phone || '',
+      room: tenant.room,
+      moveInDate: tenant.move_in_date,
+      numberOfOccupants: tenant.number_of_occupants,
+    });
+    setEditingTenantId(tenant.id);
+    setTenantError('');
+    setShowTenantForm(true);
+  };
+
+  const handleCancelTenantForm = () => {
+    setShowTenantForm(false);
+    setEditingTenantId(null);
+    setTenantForm(emptyTenant);
+    setTenantError('');
   };
 
   const handleBillSubmit = async (e) => {
@@ -148,7 +183,18 @@ const PropertyDetail = () => {
           <h2 className="text-xl font-semibold text-secondary-900 flex items-center">
             <Users className="w-5 h-5 mr-2" /> Tenants
           </h2>
-          <button onClick={() => setShowTenantForm((s) => !s)} className="btn-secondary flex items-center space-x-2">
+          <button
+            onClick={() => {
+              if (showTenantForm) {
+                handleCancelTenantForm();
+              } else {
+                setEditingTenantId(null);
+                setTenantForm(emptyTenant);
+                setShowTenantForm(true);
+              }
+            }}
+            className="btn-secondary flex items-center space-x-2"
+          >
             <Plus className="w-4 h-4" />
             <span>Add Tenant</span>
           </button>
@@ -200,9 +246,9 @@ const PropertyDetail = () => {
             {tenantError && <p className="text-red-600 text-sm">{tenantError}</p>}
             <div className="flex space-x-3">
               <button type="submit" disabled={tenantSubmitting} className="btn-primary">
-                {tenantSubmitting ? 'Adding...' : 'Add Tenant'}
+                {tenantSubmitting ? 'Saving...' : editingTenantId ? 'Save Changes' : 'Add Tenant'}
               </button>
-              <button type="button" className="btn-secondary" onClick={() => setShowTenantForm(false)}>
+              <button type="button" className="btn-secondary" onClick={handleCancelTenantForm}>
                 Cancel
               </button>
             </div>
@@ -221,12 +267,20 @@ const PropertyDetail = () => {
                   <p className="text-sm text-secondary-600">Occupants: {tenant.number_of_occupants}</p>
                   <p className="text-sm text-secondary-500">Moved in: {tenant.move_in_date}</p>
                 </div>
-                <button
-                  onClick={() => deleteTenant(tenant.id)}
-                  className="text-secondary-300 hover:text-red-500"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => handleEditTenant(tenant)}
+                    className="text-secondary-300 hover:text-primary-600"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => deleteTenant(tenant.id)}
+                    className="text-secondary-300 hover:text-red-500"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
