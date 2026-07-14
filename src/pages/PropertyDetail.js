@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, Receipt, Users, Copy, RotateCcw, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Receipt, Users, Copy, RotateCcw, CheckCircle2, Mail, MailCheck } from 'lucide-react';
 import { useProperties } from '../contexts/PropertyContext';
 
 const emptyTenant = { name: '', email: '', phone: '', room: '', moveInDate: '', numberOfOccupants: 1 };
@@ -24,7 +24,31 @@ const PropertyDetail = () => {
     createBillWithSplits,
     deleteBill,
     setBillSplitStatus,
+    sendBillEmail,
   } = useProperties();
+
+  const [sendingSplitId, setSendingSplitId] = useState(null);
+  const [emailError, setEmailError] = useState('');
+
+  const tenantById = (tenantId) => tenants.find((t) => t.id === tenantId);
+
+  const handleSendEmail = async (split) => {
+    const tenant = tenantById(split.tenant_id);
+    if (!tenant?.email) {
+      setEmailError(`${split.tenant_name} has no email on file. Add one to their tenant record first.`);
+      return;
+    }
+    setEmailError('');
+    setSendingSplitId(split.id);
+    try {
+      await sendBillEmail(split.id);
+    } catch (err) {
+      console.error('Failed to send bill email:', err);
+      setEmailError(err.message || 'Failed to send email');
+    } finally {
+      setSendingSplitId(null);
+    }
+  };
 
   const property = properties.find((p) => p.id === propertyId);
   const propertyTenants = tenants.filter((t) => t.property_id === propertyId);
@@ -311,6 +335,7 @@ const PropertyDetail = () => {
                         <th className="py-1 text-right">Owed</th>
                         <th className="py-1 text-center">Status</th>
                         <th className="py-1 text-right">Link</th>
+                        <th className="py-1 text-right">Email</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -359,10 +384,26 @@ const PropertyDetail = () => {
                               )}
                             </div>
                           </td>
+                          <td className="py-1 text-right">
+                            <button
+                              title={split.email_sent_at ? `Sent ${new Date(split.email_sent_at).toLocaleString()} — click to resend` : 'Send bill email'}
+                              onClick={() => handleSendEmail(split)}
+                              disabled={sendingSplitId === split.id}
+                              className={`inline-flex items-center space-x-1 text-xs px-2 py-1 rounded ${
+                                split.email_sent_at
+                                  ? 'text-green-700 hover:bg-green-50'
+                                  : 'text-primary-600 hover:bg-primary-50'
+                              } disabled:opacity-50`}
+                            >
+                              {split.email_sent_at ? <MailCheck className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
+                              <span>{sendingSplitId === split.id ? 'Sending...' : split.email_sent_at ? 'Sent' : 'Send'}</span>
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                  {emailError && <p className="text-red-600 text-xs mt-3">{emailError}</p>}
                 </div>
               );
             })}

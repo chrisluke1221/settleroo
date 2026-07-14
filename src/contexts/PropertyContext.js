@@ -270,6 +270,18 @@ export const PropertyProvider = ({ children }) => {
     return data;
   };
 
+  const sendBillEmail = async (splitId) => {
+    const { data, error } = await supabase.functions.invoke('send-bill-email', {
+      body: { splitId },
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    setBillSplits((prev) =>
+      prev.map((s) => (s.id === splitId ? { ...s, email_sent_at: new Date().toISOString() } : s))
+    );
+    return data;
+  };
+
   const value = {
     properties,
     tenants,
@@ -278,6 +290,7 @@ export const PropertyProvider = ({ children }) => {
     loading,
     refresh,
     setBillSplitStatus,
+    sendBillEmail,
     createProperty,
     deleteProperty,
     createTenant,
