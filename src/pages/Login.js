@@ -1,52 +1,47 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { 
-  User, 
-  Mail, 
-  ArrowRight,
-  Eye,
-  EyeOff
-} from 'lucide-react';
+import { User, Mail, ArrowRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const Login = () => {
-  const { login } = useAuth();
+  const { login, signUp } = useAuth();
   const navigate = useNavigate();
-  
-  const [formData, setFormData] = useState({
-    name: '',
-    email: ''
-  });
-  
-  const [showPassword, setShowPassword] = useState(false);
+
+  const [mode, setMode] = useState('login'); // 'login' | 'signup'
+  const [formData, setFormData] = useState({ name: '', email: '', password: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!formData.name.trim() || !formData.email.trim()) {
+
+    if (!formData.email.trim() || !formData.password.trim()) {
       setError('Please fill in all fields');
       return;
     }
-    
+
     setIsSubmitting(true);
     setError('');
-    
+    setInfo('');
+
     try {
-      // Simple login - in a real app, this would validate against a backend
-      const userData = {
-        id: Date.now().toString(),
-        name: formData.name.trim(),
-        email: formData.email.trim()
-      };
-      
-      login(userData);
-      navigate('/dashboard');
-    } catch (error) {
-      console.error('Login error:', error);
-      setError('Failed to login. Please try again.');
+      if (mode === 'signup') {
+        const data = await signUp(formData.email.trim(), formData.password, formData.name.trim());
+        if (!data.session) {
+          setInfo('Account created. Check your email to confirm, then sign in.');
+          setMode('login');
+        } else {
+          navigate('/properties');
+        }
+      } else {
+        await login(formData.email.trim(), formData.password);
+        navigate('/properties');
+      }
+    } catch (err) {
+      console.error('Auth error:', err);
+      setError(err.message || 'Something went wrong. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -54,15 +49,8 @@ const Login = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    
-    // Clear error when user starts typing
-    if (error) {
-      setError('');
-    }
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (error) setError('');
   };
 
   return (
@@ -79,29 +67,32 @@ const Login = () => {
               <User className="w-8 h-8 text-white" />
             </div>
             <h2 className="text-3xl font-bold text-secondary-900 mb-2">
-              Welcome to RoomTab
+              {mode === 'login' ? 'Welcome back' : 'Create your account'}
             </h2>
             <p className="text-secondary-600">
-              Sign in to manage your shared expenses
+              {mode === 'login'
+                ? 'Sign in to manage your properties and tenants'
+                : 'Start managing your properties and bill splits'}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-secondary-900 mb-2">
-                Full Name
-              </label>
-              <input
-                type="text"
-                id="name"
-                name="name"
-                value={formData.name}
-                onChange={handleInputChange}
-                placeholder="Enter your full name"
-                className="input-field"
-                required
-              />
-            </div>
+            {mode === 'signup' && (
+              <div>
+                <label htmlFor="name" className="block text-sm font-medium text-secondary-900 mb-2">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  id="name"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  placeholder="Enter your full name"
+                  className="input-field"
+                />
+              </div>
+            )}
 
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-secondary-900 mb-2">
@@ -122,9 +113,32 @@ const Login = () => {
               </div>
             </div>
 
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-secondary-900 mb-2">
+                Password
+              </label>
+              <input
+                type="password"
+                id="password"
+                name="password"
+                value={formData.password}
+                onChange={handleInputChange}
+                placeholder="Enter your password"
+                className="input-field"
+                required
+                minLength={6}
+              />
+            </div>
+
             {error && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-red-600 text-sm">{error}</p>
+              </div>
+            )}
+
+            {info && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-green-700 text-sm">{info}</p>
               </div>
             )}
 
@@ -136,11 +150,11 @@ const Login = () => {
               {isSubmitting ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Signing in...</span>
+                  <span>{mode === 'login' ? 'Signing in...' : 'Creating account...'}</span>
                 </>
               ) : (
                 <>
-                  <span>Sign In</span>
+                  <span>{mode === 'login' ? 'Sign In' : 'Sign Up'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -148,22 +162,22 @@ const Login = () => {
           </form>
 
           <div className="mt-6 text-center">
-            <p className="text-sm text-secondary-600">
-              By signing in, you agree to our{' '}
-              <a href="/terms" className="text-primary-600 hover:text-primary-700">
-                Terms of Service
-              </a>{' '}
-              and{' '}
-              <a href="/privacy" className="text-primary-600 hover:text-primary-700">
-                Privacy Policy
-              </a>
-            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setMode(mode === 'login' ? 'signup' : 'login');
+                setError('');
+                setInfo('');
+              }}
+              className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+            >
+              {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+            </button>
           </div>
         </div>
 
         <div className="mt-8 text-center">
           <p className="text-secondary-600">
-            Don't have an account?{' '}
             <Link to="/" className="text-primary-600 hover:text-primary-700 font-medium">
               Go back home
             </Link>

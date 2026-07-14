@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { 
-  Home, 
-  Users, 
-  Plus, 
-  LogIn, 
-  LogOut, 
-  User, 
-  Menu, 
+import {
+  Home,
+  Building2,
+  LogIn,
+  LogOut,
+  User,
+  Menu,
   X,
   DollarSign
 } from 'lucide-react';
@@ -27,9 +26,7 @@ const Header = () => {
 
   const navItems = [
     { name: 'Home', path: '/', icon: Home },
-    { name: 'Dashboard', path: '/dashboard', icon: Users, requiresAuth: true },
-    { name: 'Create Room', path: '/create-room', icon: Plus, requiresAuth: true },
-    { name: 'Join Room', path: '/join-room', icon: Users, requiresAuth: true },
+    { name: 'Properties', path: '/properties', icon: Building2, requiresAuth: true },
   ];
 
   const filteredNavItems = navItems.filter(item => 
@@ -80,7 +77,7 @@ const Header = () => {
                     <User className="w-4 h-4 text-primary-600" />
                   </div>
                   <span className="text-sm font-medium text-secondary-900">
-                    {user?.name || 'User'}
+                    {user?.user_metadata?.full_name || user?.email || 'User'}
                   </span>
                 </div>
                 <button
@@ -152,7 +149,7 @@ const Header = () => {
                       <User className="w-4 h-4 text-primary-600" />
                     </div>
                     <span className="text-sm font-medium text-secondary-900">
-                      {user?.name || 'User'}
+                      {user?.user_metadata?.full_name || user?.email || 'User'}
                     </span>
                   </div>
                   <button
