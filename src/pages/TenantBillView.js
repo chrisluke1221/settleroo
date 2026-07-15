@@ -108,65 +108,94 @@ const TenantBillView = () => {
           <div className="bg-secondary-50 px-4 py-2 border-b border-secondary-200">
             <p className="text-xs font-semibold text-secondary-600 uppercase tracking-wide">How this was calculated</p>
           </div>
-          <div className="divide-y divide-secondary-100 text-sm">
-            <div className="flex items-start justify-between px-4 py-3">
-              <div className="flex items-start space-x-2">
-                <CalendarDays className="w-4 h-4 text-secondary-400 mt-0.5" />
-                <div>
-                  <p className="text-secondary-900 font-medium">Your occupancy in this bill period</p>
-                  <p className="text-secondary-500">{split.occupancy_start} to {split.occupancy_end}</p>
+          {split.rate_breakdown ? (
+            <div className="divide-y divide-secondary-100 text-sm">
+              {split.rate_breakdown.map((seg, i) => (
+                <div key={i} className="flex items-start justify-between px-4 py-3">
+                  <div className="flex items-start space-x-2">
+                    <CalendarDays className="w-4 h-4 text-secondary-400 mt-0.5" />
+                    <div>
+                      <p className="text-secondary-900 font-medium">
+                        ${(seg.amountCents / 100).toFixed(2)}/{seg.frequency} rate
+                      </p>
+                      <p className="text-secondary-500">
+                        {seg.from} to {seg.to} ({seg.days} day{seg.days === 1 ? '' : 's'})
+                      </p>
+                    </div>
+                  </div>
+                  <span className="font-medium text-secondary-900 whitespace-nowrap">
+                    ${(seg.cents / 100).toFixed(2)}
+                  </span>
                 </div>
+              ))}
+              <div className="flex items-center justify-between px-4 py-3 bg-secondary-50">
+                <span className="text-secondary-700">Total rent for this period</span>
+                <span className="font-bold text-primary-700 whitespace-nowrap">
+                  ${Number(split.owed_amount).toFixed(2)}
+                </span>
               </div>
-              <span className="font-medium text-secondary-900 whitespace-nowrap">{split.occupancy_days} days</span>
             </div>
-
-            <div className="flex items-start justify-between px-4 py-3">
-              <div className="flex items-start space-x-2">
-                <Users className="w-4 h-4 text-secondary-400 mt-0.5" />
-                <div>
-                  <p className="text-secondary-900 font-medium">Occupants in your room</p>
-                  <p className="text-secondary-500">Room: {split.room}</p>
+          ) : (
+            <div className="divide-y divide-secondary-100 text-sm">
+              <div className="flex items-start justify-between px-4 py-3">
+                <div className="flex items-start space-x-2">
+                  <CalendarDays className="w-4 h-4 text-secondary-400 mt-0.5" />
+                  <div>
+                    <p className="text-secondary-900 font-medium">Your occupancy in this bill period</p>
+                    <p className="text-secondary-500">{split.occupancy_start} to {split.occupancy_end}</p>
+                  </div>
                 </div>
+                <span className="font-medium text-secondary-900 whitespace-nowrap">{split.occupancy_days} days</span>
               </div>
-              <span className="font-medium text-secondary-900 whitespace-nowrap">{split.number_of_occupants}</span>
-            </div>
 
-            <div className="flex items-center justify-between px-4 py-3 bg-secondary-50">
-              <span className="text-secondary-700">
-                Your person-days = {split.occupancy_days} days &times; {split.number_of_occupants} occupant
-                {split.number_of_occupants === 1 ? '' : 's'}
-              </span>
-              <span className="font-semibold text-secondary-900 whitespace-nowrap">{split.person_days}</span>
-            </div>
-
-            <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-secondary-700">
-                Total person-days for this bill (all tenants combined)
-              </span>
-              <span className="font-medium text-secondary-900 whitespace-nowrap">{totalPersonDays}</span>
-            </div>
-
-            {otherPersonDays > 0 && (
-              <div className="flex items-center justify-between px-4 py-3 text-secondary-500">
-                <span>Other tenants' person-days ({totalPersonDays} &minus; {split.person_days})</span>
-                <span className="whitespace-nowrap">{otherPersonDays}</span>
+              <div className="flex items-start justify-between px-4 py-3">
+                <div className="flex items-start space-x-2">
+                  <Users className="w-4 h-4 text-secondary-400 mt-0.5" />
+                  <div>
+                    <p className="text-secondary-900 font-medium">Occupants in your room</p>
+                    <p className="text-secondary-500">Room: {split.room}</p>
+                  </div>
+                </div>
+                <span className="font-medium text-secondary-900 whitespace-nowrap">{split.number_of_occupants}</span>
               </div>
-            )}
 
-            <div className="flex items-center justify-between px-4 py-3 bg-secondary-50">
-              <span className="text-secondary-700">
-                Your share = {split.person_days} &divide; {totalPersonDays} person-days
-              </span>
-              <span className="font-semibold text-secondary-900 whitespace-nowrap">{split.percentage}%</span>
-            </div>
+              <div className="flex items-center justify-between px-4 py-3 bg-secondary-50">
+                <span className="text-secondary-700">
+                  Your person-days = {split.occupancy_days} days &times; {split.number_of_occupants} occupant
+                  {split.number_of_occupants === 1 ? '' : 's'}
+                </span>
+                <span className="font-semibold text-secondary-900 whitespace-nowrap">{split.person_days}</span>
+              </div>
 
-            <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-secondary-700">
-                Your amount = {split.percentage}% &times; ${Number(split.total_amount).toFixed(2)}
-              </span>
-              <span className="font-bold text-primary-700 whitespace-nowrap">${Number(split.owed_amount).toFixed(2)}</span>
+              <div className="flex items-center justify-between px-4 py-3">
+                <span className="text-secondary-700">
+                  Total person-days for this bill (all tenants combined)
+                </span>
+                <span className="font-medium text-secondary-900 whitespace-nowrap">{totalPersonDays}</span>
+              </div>
+
+              {otherPersonDays > 0 && (
+                <div className="flex items-center justify-between px-4 py-3 text-secondary-500">
+                  <span>Other tenants' person-days ({totalPersonDays} &minus; {split.person_days})</span>
+                  <span className="whitespace-nowrap">{otherPersonDays}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between px-4 py-3 bg-secondary-50">
+                <span className="text-secondary-700">
+                  Your share = {split.person_days} &divide; {totalPersonDays} person-days
+                </span>
+                <span className="font-semibold text-secondary-900 whitespace-nowrap">{split.percentage}%</span>
+              </div>
+
+              <div className="flex items-center justify-between px-4 py-3">
+                <span className="text-secondary-700">
+                  Your amount = {split.percentage}% &times; ${Number(split.total_amount).toFixed(2)}
+                </span>
+                <span className="font-bold text-primary-700 whitespace-nowrap">${Number(split.owed_amount).toFixed(2)}</span>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {split.due_date && (

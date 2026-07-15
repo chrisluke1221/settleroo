@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from './AuthContext';
 import { computeSplits } from '../lib/billSplit';
+import { computeRentForPeriod, ratesOverlap } from '../lib/rentCalc';
 
 const PropertyContext = createContext();
 
@@ -19,6 +20,7 @@ export const PropertyProvider = ({ children }) => {
   const [tenants, setTenants] = useState([]);
   const [bills, setBills] = useState([]);
   const [billSplits, setBillSplits] = useState([]);
+  const [rentRates, setRentRates] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -27,6 +29,7 @@ export const PropertyProvider = ({ children }) => {
       setTenants([]);
       setBills([]);
       setBillSplits([]);
+      setRentRates([]);
       return;
     }
     setLoading(true);
@@ -35,22 +38,26 @@ export const PropertyProvider = ({ children }) => {
       { data: tenantsData, error: tenantsError },
       { data: billsData, error: billsError },
       { data: billSplitsData, error: billSplitsError },
+      { data: rentRatesData, error: rentRatesError },
     ] = await Promise.all([
       supabase.from('properties').select('*').order('created_at', { ascending: false }),
       supabase.from('tenants').select('*').order('created_at', { ascending: false }),
       supabase.from('bills').select('*').order('created_at', { ascending: false }),
       supabase.from('bill_splits').select('*'),
+      supabase.from('rent_rates').select('*').order('effective_from', { ascending: true }),
     ]);
 
     if (propertiesError) throw propertiesError;
     if (tenantsError) throw tenantsError;
     if (billsError) throw billsError;
     if (billSplitsError) throw billSplitsError;
+    if (rentRatesError) throw rentRatesError;
 
     setProperties(propertiesData ?? []);
     setTenants(tenantsData ?? []);
     setBills(billsData ?? []);
     setBillSplits(billSplitsData ?? []);
+    setRentRates(rentRatesData ?? []);
     setLoading(false);
   }, [user]);
 
@@ -277,6 +284,149 @@ export const PropertyProvider = ({ children }) => {
     return updatedBill;
   };
 
+  // A rate is blocked from edit/delete once it overlaps a rent bill period
+  // where this tenant's split is already paid — same immutability
+  // principle as bills, applied to the rate that generated them.
+  const rentRateEditGuard = (tenantId, effectiveFrom, effectiveTo) => {
+    const rangeEnd = effectiveTo || '9999-12-31';
+    return bills.some((b) => {
+      if (b.bill_type !== 'rent') return false;
+      const split = billSplits.find((s) => s.bill_id === b.id && s.tenant_id === tenantId);
+      if (!split || split.status !== 'paid') return false;
+      return effectiveFrom <= b.billing_period_end && b.billing_period_start <= rangeEnd;
+    });
+  };
+
+  const addRentRate = async (tenantId, { amountCents, frequency, effectiveFrom }) => {
+    const tenant = tenants.find((t) => t.id === tenantId);
+    if (!tenant) throw new Error('Tenant not found');
+    if (effectiveFrom < tenant.move_in_date) {
+      throw new Error("Rate can't start before the tenant's move-in date.");
+    }
+
+    const tenantRates = rentRates.filter((r) => r.tenant_id === tenantId);
+
+    // Auto-close the previous open-ended rate the day before this one
+    // starts, so consecutive rates never have a gap between them. This
+    // rate is expected to "overlap" the new one before it's closed, so
+    // it's excluded from the overlap check below rather than treated as
+    // a conflict.
+    const openRate = tenantRates.find((r) => !r.effective_to);
+    const willAutoClose = openRate && openRate.effective_from < effectiveFrom;
+    const ratesForOverlapCheck = willAutoClose
+      ? tenantRates.filter((r) => r.id !== openRate.id)
+      : tenantRates;
+
+    if (ratesOverlap(ratesForOverlapCheck, effectiveFrom, null)) {
+      throw new Error('This overlaps an existing rate for this tenant.');
+    }
+
+    if (willAutoClose) {
+      const dayBefore = new Date(effectiveFrom);
+      dayBefore.setDate(dayBefore.getDate() - 1);
+      const closedDate = dayBefore.toISOString().slice(0, 10);
+      const { data: closedRate, error: closeError } = await supabase
+        .from('rent_rates')
+        .update({ effective_to: closedDate })
+        .eq('id', openRate.id)
+        .select()
+        .single();
+      if (closeError) throw closeError;
+      setRentRates((prev) => prev.map((r) => (r.id === openRate.id ? closedRate : r)));
+    }
+
+    const { data, error } = await supabase
+      .from('rent_rates')
+      .insert({
+        tenant_id: tenantId,
+        landlord_id: user.id,
+        amount_cents: amountCents,
+        frequency,
+        effective_from: effectiveFrom,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    setRentRates((prev) => [...prev, data]);
+    return data;
+  };
+
+  const deleteRentRate = async (rateId) => {
+    const rate = rentRates.find((r) => r.id === rateId);
+    if (!rate) throw new Error('Rate not found');
+    if (rentRateEditGuard(rate.tenant_id, rate.effective_from, rate.effective_to)) {
+      throw new Error(
+        'This rate was used for an already-paid rent bill and cannot be deleted. End-date it with a new rate instead.'
+      );
+    }
+    const { error } = await supabase.from('rent_rates').delete().eq('id', rateId);
+    if (error) throw error;
+    setRentRates((prev) => prev.filter((r) => r.id !== rateId));
+  };
+
+  // Rent works differently from a shared utility bill: each tenant is
+  // charged their own rate (resolved day-by-day, prorated across any
+  // mid-period rate change) rather than a portion of one shared total.
+  // The "total" is just the sum of everyone's own charge.
+  const createRentBill = async ({ propertyId, periodStart, periodEnd, dueDate }) => {
+    const propertyTenants = tenants.filter((t) => t.property_id === propertyId && t.status !== 'former');
+
+    const charges = propertyTenants
+      .map((tenant) => {
+        const tenantRates = rentRates.filter((r) => r.tenant_id === tenant.id);
+        const { totalCents, segments } = computeRentForPeriod(tenantRates, periodStart, periodEnd);
+        return { tenant, totalCents, segments };
+      })
+      .filter((c) => c.totalCents > 0);
+
+    if (charges.length === 0) {
+      throw new Error('No tenant has a rent rate covering this period.');
+    }
+
+    const totalCents = charges.reduce((sum, c) => sum + c.totalCents, 0);
+
+    const { data: bill, error: billError } = await supabase
+      .from('bills')
+      .insert({
+        property_id: propertyId,
+        bill_type: 'rent',
+        total_amount: totalCents / 100,
+        billing_period_start: periodStart,
+        billing_period_end: periodEnd,
+        due_date: dueDate || null,
+        landlord_id: user.id,
+      })
+      .select()
+      .single();
+    if (billError) throw billError;
+
+    const splitsToInsert = charges.map(({ tenant, totalCents: tenantCents, segments }) => ({
+      bill_id: bill.id,
+      tenant_id: tenant.id,
+      tenant_name: tenant.name,
+      room: tenant.room,
+      number_of_occupants: tenant.number_of_occupants || 1,
+      occupancy_days: segments.reduce((s, seg) => s + seg.days, 0),
+      person_days: segments.reduce((s, seg) => s + seg.days, 0),
+      percentage: Math.round((tenantCents / totalCents) * 10000) / 100,
+      owed_amount: tenantCents / 100,
+      occupancy_start: periodStart,
+      occupancy_end: periodEnd,
+      landlord_id: user.id,
+      rate_breakdown: segments,
+    }));
+
+    const { data: insertedSplits, error: splitsError } = await supabase
+      .from('bill_splits')
+      .insert(splitsToInsert)
+      .select();
+    if (splitsError) throw splitsError;
+
+    setBills((prev) => [bill, ...prev]);
+    setBillSplits((prev) => [...prev, ...insertedSplits]);
+    return { bill, splits: insertedSplits };
+  };
+
   const deleteBill = async (billId) => {
     const bill = bills.find((b) => b.id === billId);
     if (bill?.attachment_path) {
@@ -381,6 +531,7 @@ export const PropertyProvider = ({ children }) => {
     tenants,
     bills,
     billSplits,
+    rentRates,
     loading,
     refresh,
     setBillSplitStatus,
@@ -400,6 +551,9 @@ export const PropertyProvider = ({ children }) => {
     updateBill,
     recalculateBill,
     deleteBill,
+    addRentRate,
+    deleteRentRate,
+    createRentBill,
   };
 
   return (

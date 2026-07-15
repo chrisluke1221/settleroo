@@ -18,11 +18,15 @@ import {
   Archive,
   RefreshCw,
   ShieldOff,
+  DollarSign,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { useProperties } from '../contexts/PropertyContext';
 
 const emptyTenant = { name: '', email: '', phone: '', room: '', moveInDate: '', moveOutDate: '', numberOfOccupants: 1 };
 const emptyBill = { billType: 'utilities', totalAmount: '', periodStart: '', periodEnd: '', dueDate: '' };
+const emptyRate = { amount: '', frequency: 'monthly', effectiveFrom: '' };
 
 const STATUS_STYLES = {
   pending: 'bg-secondary-100 text-secondary-600',
@@ -37,6 +41,7 @@ const PropertyDetail = () => {
     tenants,
     bills,
     billSplits,
+    rentRates,
     updateProperty,
     createTenant,
     updateTenant,
@@ -52,7 +57,16 @@ const PropertyDetail = () => {
     uploadBillAttachment,
     removeBillAttachment,
     getBillAttachmentSignedUrl,
+    addRentRate,
+    deleteRentRate,
+    createRentBill,
   } = useProperties();
+
+  const [ratesTenantId, setRatesTenantId] = useState(null);
+  const [rateForm, setRateForm] = useState(emptyRate);
+  const [rateError, setRateError] = useState('');
+  const [rateSubmitting, setRateSubmitting] = useState(false);
+  const [expandedBreakdownSplitId, setExpandedBreakdownSplitId] = useState(null);
 
   const [sendingSplitId, setSendingSplitId] = useState(null);
   const [emailError, setEmailError] = useState('');
@@ -119,6 +133,53 @@ const PropertyDetail = () => {
   };
 
   const tenantById = (tenantId) => tenants.find((t) => t.id === tenantId);
+
+  const currentRateFor = (tenantId) =>
+    rentRates.filter((r) => r.tenant_id === tenantId).find((r) => !r.effective_to);
+
+  const rateHistoryFor = (tenantId) =>
+    rentRates.filter((r) => r.tenant_id === tenantId).sort((a, b) => b.effective_from.localeCompare(a.effective_from));
+
+  const handleOpenRateForm = (tenantId) => {
+    setRatesTenantId(tenantId);
+    setRateForm(emptyRate);
+    setRateError('');
+  };
+
+  const handleRateSubmit = async (e, tenantId) => {
+    e.preventDefault();
+    const amount = parseFloat(rateForm.amount);
+    if (!amount || amount <= 0 || !rateForm.effectiveFrom) {
+      setRateError('A positive amount and start date are required');
+      return;
+    }
+    setRateSubmitting(true);
+    setRateError('');
+    try {
+      await addRentRate(tenantId, {
+        amountCents: Math.round(amount * 100),
+        frequency: rateForm.frequency,
+        effectiveFrom: rateForm.effectiveFrom,
+      });
+      setRatesTenantId(null);
+      setRateForm(emptyRate);
+    } catch (err) {
+      console.error('Failed to save rent rate:', err);
+      setRateError(err.message || 'Failed to save rent rate');
+    } finally {
+      setRateSubmitting(false);
+    }
+  };
+
+  const handleDeleteRate = async (rateId) => {
+    if (!window.confirm('Delete this rent rate?')) return;
+    try {
+      await deleteRentRate(rateId);
+    } catch (err) {
+      console.error('Failed to delete rent rate:', err);
+      window.alert(err.message || 'Failed to delete rent rate');
+    }
+  };
 
   const handleRevokeLink = async (split) => {
     if (!window.confirm(`Revoke ${split.tenant_name}'s current bill link? The old link will stop working immediately.`)) return;
@@ -268,10 +329,16 @@ const PropertyDetail = () => {
     }
   };
 
+  const isRentBill = billForm.billType === 'rent' && !editingBillId;
+
   const handleBillSubmit = async (e) => {
     e.preventDefault();
-    if (!billForm.totalAmount || !billForm.periodStart || !billForm.periodEnd) {
-      setBillError('Amount and billing period are required');
+    if (!billForm.periodStart || !billForm.periodEnd) {
+      setBillError('Billing period is required');
+      return;
+    }
+    if (!isRentBill && !billForm.totalAmount) {
+      setBillError('Amount is required');
       return;
     }
     setBillSubmitting(true);
@@ -282,6 +349,13 @@ const PropertyDetail = () => {
           billId: editingBillId,
           billType: billForm.billType,
           totalAmount: parseFloat(billForm.totalAmount),
+          periodStart: billForm.periodStart,
+          periodEnd: billForm.periodEnd,
+          dueDate: billForm.dueDate || null,
+        });
+      } else if (isRentBill) {
+        await createRentBill({
+          propertyId,
           periodStart: billForm.periodStart,
           periodEnd: billForm.periodEnd,
           dueDate: billForm.dueDate || null,
@@ -517,6 +591,86 @@ const PropertyDetail = () => {
                   {tenant.move_out_date && (
                     <p className="text-sm text-secondary-500">Moves out: {tenant.move_out_date}</p>
                   )}
+
+                  <div className="mt-3 pt-3 border-t border-secondary-100">
+                    {currentRateFor(tenant.id) ? (
+                      <p className="text-sm text-secondary-700 flex items-center">
+                        <DollarSign className="w-3.5 h-3.5 mr-1 text-secondary-400" />
+                        ${(currentRateFor(tenant.id).amount_cents / 100).toFixed(2)}/{currentRateFor(tenant.id).frequency}
+                        <span className="text-secondary-400 ml-1">since {currentRateFor(tenant.id).effective_from}</span>
+                      </p>
+                    ) : (
+                      <p className="text-sm text-secondary-400">No rent rate set</p>
+                    )}
+                    <button
+                      onClick={() => handleOpenRateForm(tenant.id)}
+                      className="text-xs text-primary-600 hover:text-primary-700 mt-1"
+                    >
+                      {currentRateFor(tenant.id) ? 'Change rate' : 'Set rate'}
+                    </button>
+
+                    {ratesTenantId === tenant.id && (
+                      <form
+                        onSubmit={(e) => handleRateSubmit(e, tenant.id)}
+                        className="mt-2 space-y-2 bg-secondary-50 rounded-lg p-3"
+                      >
+                        <div className="grid grid-cols-3 gap-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="input-field text-sm"
+                            placeholder="Amount"
+                            value={rateForm.amount}
+                            onChange={(e) => setRateForm((p) => ({ ...p, amount: e.target.value }))}
+                          />
+                          <select
+                            className="input-field text-sm"
+                            value={rateForm.frequency}
+                            onChange={(e) => setRateForm((p) => ({ ...p, frequency: e.target.value }))}
+                          >
+                            <option value="weekly">Weekly</option>
+                            <option value="fortnightly">Fortnightly</option>
+                            <option value="monthly">Monthly</option>
+                          </select>
+                          <input
+                            type="date"
+                            className="input-field text-sm"
+                            value={rateForm.effectiveFrom}
+                            onChange={(e) => setRateForm((p) => ({ ...p, effectiveFrom: e.target.value }))}
+                          />
+                        </div>
+                        {rateError && <p className="text-red-600 text-xs">{rateError}</p>}
+                        <div className="flex space-x-2">
+                          <button type="submit" disabled={rateSubmitting} className="btn-primary text-xs px-3 py-1">
+                            {rateSubmitting ? 'Saving...' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary text-xs px-3 py-1"
+                            onClick={() => setRatesTenantId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    )}
+
+                    {rateHistoryFor(tenant.id).length > 1 && (
+                      <ul className="mt-2 space-y-1">
+                        {rateHistoryFor(tenant.id).map((r) => (
+                          <li key={r.id} className="text-xs text-secondary-500 flex items-center justify-between">
+                            <span>
+                              ${(r.amount_cents / 100).toFixed(2)}/{r.frequency} &middot; {r.effective_from} to{' '}
+                              {r.effective_to || 'ongoing'}
+                            </span>
+                            <button onClick={() => handleDeleteRate(r.id)} className="text-secondary-300 hover:text-red-500">
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center space-x-2">
                   <button
@@ -602,14 +756,20 @@ const PropertyDetail = () => {
                 <option value="internet">Internet</option>
                 <option value="other">Other</option>
               </select>
-              <input
-                type="number"
-                step="0.01"
-                className="input-field"
-                placeholder="Total amount"
-                value={billForm.totalAmount}
-                onChange={(e) => setBillForm((p) => ({ ...p, totalAmount: e.target.value }))}
-              />
+              {isRentBill ? (
+                <div className="flex items-center text-xs text-secondary-500 bg-secondary-50 rounded-lg px-3">
+                  Auto-calculated from tenant rent rates
+                </div>
+              ) : (
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input-field"
+                  placeholder="Total amount"
+                  value={billForm.totalAmount}
+                  onChange={(e) => setBillForm((p) => ({ ...p, totalAmount: e.target.value }))}
+                />
+              )}
               <input
                 type="date"
                 className="input-field"
@@ -639,6 +799,8 @@ const PropertyDetail = () => {
                   ? 'Saving...'
                   : editingBillId
                   ? 'Save Changes'
+                  : isRentBill
+                  ? 'Generate Rent Bill'
                   : 'Create Bill & Split'}
               </button>
               <button type="button" className="btn-secondary" onClick={handleCancelBillForm}>
@@ -744,8 +906,26 @@ const PropertyDetail = () => {
                     </thead>
                     <tbody>
                       {splits.map((split) => (
-                        <tr key={split.id} className="border-b border-secondary-100 last:border-0">
-                          <td className="py-1">{split.tenant_name}</td>
+                        <React.Fragment key={split.id}>
+                        <tr className="border-b border-secondary-100 last:border-0">
+                          <td className="py-1">
+                            {split.tenant_name}
+                            {split.rate_breakdown && (
+                              <button
+                                onClick={() =>
+                                  setExpandedBreakdownSplitId((id) => (id === split.id ? null : split.id))
+                                }
+                                className="ml-1 text-secondary-300 hover:text-primary-600 align-middle"
+                                title="View rate breakdown"
+                              >
+                                {expandedBreakdownSplitId === split.id ? (
+                                  <ChevronUp className="w-3 h-3 inline" />
+                                ) : (
+                                  <ChevronDown className="w-3 h-3 inline" />
+                                )}
+                              </button>
+                            )}
+                          </td>
                           <td className="py-1">{split.room}</td>
                           <td className="py-1">{split.percentage}%</td>
                           <td className="py-1 text-right font-medium tabular-nums">${Number(split.owed_amount).toFixed(2)}</td>
@@ -820,6 +1000,24 @@ const PropertyDetail = () => {
                             </button>
                           </td>
                         </tr>
+                        {split.rate_breakdown && expandedBreakdownSplitId === split.id && (
+                          <tr className="bg-secondary-50">
+                            <td colSpan={7} className="py-2 px-3">
+                              <ul className="text-xs text-secondary-600 space-y-1">
+                                {split.rate_breakdown.map((seg, i) => (
+                                  <li key={i} className="flex justify-between">
+                                    <span>
+                                      {seg.from} to {seg.to} ({seg.days} day{seg.days === 1 ? '' : 's'} @ $
+                                      {(seg.amountCents / 100).toFixed(2)}/{seg.frequency})
+                                    </span>
+                                    <span className="font-medium">${(seg.cents / 100).toFixed(2)}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </td>
+                          </tr>
+                        )}
+                        </React.Fragment>
                       ))}
                     </tbody>
                   </table>
