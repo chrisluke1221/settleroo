@@ -69,6 +69,18 @@ export const PropertyProvider = ({ children }) => {
     return data;
   };
 
+  const updateProperty = async (propertyId, updates) => {
+    const { data, error } = await supabase
+      .from('properties')
+      .update(updates)
+      .eq('id', propertyId)
+      .select()
+      .single();
+    if (error) throw error;
+    setProperties((prev) => prev.map((p) => (p.id === propertyId ? data : p)));
+    return data;
+  };
+
   const deleteProperty = async (propertyId) => {
     const { error } = await supabase.from('properties').delete().eq('id', propertyId);
     if (error) throw error;
@@ -165,18 +177,12 @@ export const PropertyProvider = ({ children }) => {
     return { bill, splits: insertedSplits };
   };
 
-  // Explicit, landlord-triggered recompute — never automatic. Refuses to
-  // touch a bill once any tenant has confirmed paying it, since that would
-  // silently rewrite a settled amount (the exact bug the v1 audit caught).
-  const recalculateBill = async (billId) => {
-    const bill = bills.find((b) => b.id === billId);
-    if (!bill) throw new Error('Bill not found');
-
-    const existingSplits = billSplits.filter((s) => s.bill_id === billId);
-    if (existingSplits.some((s) => s.status === 'paid')) {
-      throw new Error('This bill has a payment already confirmed — it can no longer be recalculated.');
-    }
-
+  // Shared by recalculateBill and updateBill: recompute a bill's splits
+  // against its current field values and the current active tenant list,
+  // updating matching tenant rows in place (keeps id/access_token/status)
+  // and only inserting/deleting for tenants that actually changed.
+  const applyRecomputedSplits = async (bill) => {
+    const existingSplits = billSplits.filter((s) => s.bill_id === bill.id);
     const propertyTenants = tenants.filter((t) => t.property_id === bill.property_id && t.status !== 'former');
     const newSplits = computeSplits(
       propertyTenants,
@@ -191,7 +197,7 @@ export const PropertyProvider = ({ children }) => {
     const toUpdate = newSplits.filter((s) => existingByTenantId.has(s.tenant_id));
     const toInsert = newSplits
       .filter((s) => !existingByTenantId.has(s.tenant_id))
-      .map((s) => ({ ...s, bill_id: billId, landlord_id: user.id }));
+      .map((s) => ({ ...s, bill_id: bill.id, landlord_id: user.id }));
     const toDeleteIds = existingSplits
       .filter((s) => !newTenantIds.has(s.tenant_id))
       .map((s) => s.id);
@@ -224,8 +230,51 @@ export const PropertyProvider = ({ children }) => {
     }
 
     const newBillSplitRows = [...updatedRows, ...insertedRows];
-    setBillSplits((prev) => [...prev.filter((s) => s.bill_id !== billId), ...newBillSplitRows]);
+    setBillSplits((prev) => [...prev.filter((s) => s.bill_id !== bill.id), ...newBillSplitRows]);
     return newBillSplitRows;
+  };
+
+  // Explicit, landlord-triggered recompute — never automatic. Refuses to
+  // touch a bill once any tenant has confirmed paying it, since that would
+  // silently rewrite a settled amount (the exact bug the v1 audit caught).
+  const recalculateBill = async (billId) => {
+    const bill = bills.find((b) => b.id === billId);
+    if (!bill) throw new Error('Bill not found');
+
+    const existingSplits = billSplits.filter((s) => s.bill_id === billId);
+    if (existingSplits.some((s) => s.status === 'paid')) {
+      throw new Error('This bill has a payment already confirmed — it can no longer be recalculated.');
+    }
+
+    return applyRecomputedSplits(bill);
+  };
+
+  // Corrects a bill's own fields (fat-fingered amount, wrong dates, etc.)
+  // and recomputes its splits to match. Same paid-split guard as
+  // recalculateBill — a settled bill's numbers can't move under a tenant.
+  const updateBill = async ({ billId, billType, totalAmount, periodStart, periodEnd, dueDate }) => {
+    const existingSplits = billSplits.filter((s) => s.bill_id === billId);
+    if (existingSplits.some((s) => s.status === 'paid')) {
+      throw new Error('This bill has a payment already confirmed — it can no longer be edited.');
+    }
+
+    const { data: updatedBill, error } = await supabase
+      .from('bills')
+      .update({
+        bill_type: billType,
+        total_amount: totalAmount,
+        billing_period_start: periodStart,
+        billing_period_end: periodEnd,
+        due_date: dueDate || null,
+      })
+      .eq('id', billId)
+      .select()
+      .single();
+    if (error) throw error;
+    setBills((prev) => prev.map((b) => (b.id === billId ? updatedBill : b)));
+
+    await applyRecomputedSplits(updatedBill);
+    return updatedBill;
   };
 
   const deleteBill = async (billId) => {
@@ -341,12 +390,14 @@ export const PropertyProvider = ({ children }) => {
     removeBillAttachment,
     getBillAttachmentSignedUrl,
     createProperty,
+    updateProperty,
     deleteProperty,
     createTenant,
     updateTenant,
     deleteTenant,
     reactivateTenant,
     createBillWithSplits,
+    updateBill,
     recalculateBill,
     deleteBill,
   };

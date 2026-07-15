@@ -37,11 +37,13 @@ const PropertyDetail = () => {
     tenants,
     bills,
     billSplits,
+    updateProperty,
     createTenant,
     updateTenant,
     deleteTenant,
     reactivateTenant,
     createBillWithSplits,
+    updateBill,
     recalculateBill,
     deleteBill,
     setBillSplitStatus,
@@ -161,6 +163,12 @@ const PropertyDetail = () => {
   const [billForm, setBillForm] = useState(emptyBill);
   const [billError, setBillError] = useState('');
   const [billSubmitting, setBillSubmitting] = useState(false);
+  const [editingBillId, setEditingBillId] = useState(null);
+
+  const [showPropertyForm, setShowPropertyForm] = useState(false);
+  const [propertyForm, setPropertyForm] = useState({ name: '', address: '', description: '' });
+  const [propertyError, setPropertyError] = useState('');
+  const [propertySubmitting, setPropertySubmitting] = useState(false);
 
   if (!property) {
     return (
@@ -269,22 +277,87 @@ const PropertyDetail = () => {
     setBillSubmitting(true);
     setBillError('');
     try {
-      await createBillWithSplits({
-        propertyId,
-        billType: billForm.billType,
-        totalAmount: parseFloat(billForm.totalAmount),
-        periodStart: billForm.periodStart,
-        periodEnd: billForm.periodEnd,
-        dueDate: billForm.dueDate || null,
-      });
+      if (editingBillId) {
+        await updateBill({
+          billId: editingBillId,
+          billType: billForm.billType,
+          totalAmount: parseFloat(billForm.totalAmount),
+          periodStart: billForm.periodStart,
+          periodEnd: billForm.periodEnd,
+          dueDate: billForm.dueDate || null,
+        });
+      } else {
+        await createBillWithSplits({
+          propertyId,
+          billType: billForm.billType,
+          totalAmount: parseFloat(billForm.totalAmount),
+          periodStart: billForm.periodStart,
+          periodEnd: billForm.periodEnd,
+          dueDate: billForm.dueDate || null,
+        });
+      }
       setBillForm(emptyBill);
+      setEditingBillId(null);
       setShowBillForm(false);
     } catch (err) {
-      console.error('Failed to create bill:', err);
-      setBillError(err.message || 'Failed to create bill');
+      console.error('Failed to save bill:', err);
+      setBillError(err.message || 'Failed to save bill');
     } finally {
       setBillSubmitting(false);
     }
+  };
+
+  const handleEditBill = (bill) => {
+    setBillForm({
+      billType: bill.bill_type,
+      totalAmount: String(bill.total_amount),
+      periodStart: bill.billing_period_start,
+      periodEnd: bill.billing_period_end,
+      dueDate: bill.due_date || '',
+    });
+    setEditingBillId(bill.id);
+    setBillError('');
+    setShowBillForm(true);
+  };
+
+  const handleCancelBillForm = () => {
+    setShowBillForm(false);
+    setEditingBillId(null);
+    setBillForm(emptyBill);
+    setBillError('');
+  };
+
+  const handlePropertySubmit = async (e) => {
+    e.preventDefault();
+    if (!propertyForm.name.trim() || !propertyForm.address.trim()) {
+      setPropertyError('Name and address are required');
+      return;
+    }
+    setPropertySubmitting(true);
+    setPropertyError('');
+    try {
+      await updateProperty(propertyId, {
+        name: propertyForm.name.trim(),
+        address: propertyForm.address.trim(),
+        description: propertyForm.description.trim() || null,
+      });
+      setShowPropertyForm(false);
+    } catch (err) {
+      console.error('Failed to update property:', err);
+      setPropertyError(err.message || 'Failed to update property');
+    } finally {
+      setPropertySubmitting(false);
+    }
+  };
+
+  const handleEditProperty = () => {
+    setPropertyForm({
+      name: property.name,
+      address: property.address,
+      description: property.description || '',
+    });
+    setPropertyError('');
+    setShowPropertyForm(true);
   };
 
   return (
@@ -294,9 +367,50 @@ const PropertyDetail = () => {
       </Link>
 
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-secondary-900">{property.name}</h1>
-        <p className="text-secondary-600">{property.address}</p>
-        {property.description && <p className="text-secondary-500 text-sm mt-1">{property.description}</p>}
+        {showPropertyForm ? (
+          <form onSubmit={handlePropertySubmit} className="card space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input
+                className="input-field"
+                placeholder="Property name"
+                value={propertyForm.name}
+                onChange={(e) => setPropertyForm((p) => ({ ...p, name: e.target.value }))}
+              />
+              <input
+                className="input-field"
+                placeholder="Address"
+                value={propertyForm.address}
+                onChange={(e) => setPropertyForm((p) => ({ ...p, address: e.target.value }))}
+              />
+            </div>
+            <input
+              className="input-field"
+              placeholder="Description (optional)"
+              value={propertyForm.description}
+              onChange={(e) => setPropertyForm((p) => ({ ...p, description: e.target.value }))}
+            />
+            {propertyError && <p className="text-red-600 text-sm">{propertyError}</p>}
+            <div className="flex space-x-3">
+              <button type="submit" disabled={propertySubmitting} className="btn-primary">
+                {propertySubmitting ? 'Saving...' : 'Save Changes'}
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => setShowPropertyForm(false)}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="flex items-start justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-secondary-900">{property.name}</h1>
+              <p className="text-secondary-600">{property.address}</p>
+              {property.description && <p className="text-secondary-500 text-sm mt-1">{property.description}</p>}
+            </div>
+            <button onClick={handleEditProperty} className="text-secondary-300 hover:text-primary-600 mt-1">
+              <Pencil className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Tenants */}
@@ -458,7 +572,15 @@ const PropertyDetail = () => {
             <Receipt className="w-5 h-5 mr-2" /> Bills
           </h2>
           <button
-            onClick={() => setShowBillForm((s) => !s)}
+            onClick={() => {
+              if (showBillForm) {
+                handleCancelBillForm();
+              } else {
+                setEditingBillId(null);
+                setBillForm(emptyBill);
+                setShowBillForm(true);
+              }
+            }}
             disabled={activeTenants.length === 0}
             className="btn-secondary flex items-center space-x-2 disabled:opacity-50"
           >
@@ -513,9 +635,13 @@ const PropertyDetail = () => {
             {billError && <p className="text-red-600 text-sm">{billError}</p>}
             <div className="flex space-x-3">
               <button type="submit" disabled={billSubmitting} className="btn-primary">
-                {billSubmitting ? 'Calculating split...' : 'Create Bill & Split'}
+                {billSubmitting
+                  ? 'Saving...'
+                  : editingBillId
+                  ? 'Save Changes'
+                  : 'Create Bill & Split'}
               </button>
-              <button type="button" className="btn-secondary" onClick={() => setShowBillForm(false)}>
+              <button type="button" className="btn-secondary" onClick={handleCancelBillForm}>
                 Cancel
               </button>
             </div>
@@ -542,6 +668,14 @@ const PropertyDetail = () => {
                       </p>
                     </div>
                     <div className="flex items-center space-x-3">
+                      <button
+                        onClick={() => handleEditBill(bill)}
+                        disabled={hasPaidSplit}
+                        title={hasPaidSplit ? 'A tenant has already paid this bill — it can no longer be edited' : 'Edit bill'}
+                        className="text-secondary-300 hover:text-primary-600 disabled:opacity-30 disabled:hover:text-secondary-300"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={() => handleRecalculate(bill.id)}
                         disabled={hasPaidSplit || recalculatingBillId === bill.id}
