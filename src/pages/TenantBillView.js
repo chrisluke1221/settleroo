@@ -22,7 +22,11 @@ const TenantBillView = () => {
     setSplit(data[0]);
     setLoading(false);
 
-    if (data[0].status === 'pending') {
+    // A logged-in session here is the landlord previewing their own link —
+    // don't let that flip pending -> viewed, since tenants never have
+    // accounts and the "viewed" signal only means something if it's real.
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (data[0].status === 'pending' && !sessionData?.session) {
       await supabase.rpc('mark_bill_split_viewed', { p_token: token });
     }
   }, [token]);
@@ -38,6 +42,20 @@ const TenantBillView = () => {
       setSplit((prev) => ({ ...prev, status: 'paid', paid_at: new Date().toISOString() }));
     }
     setConfirming(false);
+  };
+
+  const [openingAttachment, setOpeningAttachment] = useState(false);
+  const handleViewAttachment = async () => {
+    setOpeningAttachment(true);
+    const { data, error: fnError } = await supabase.functions.invoke('get-bill-attachment-url', {
+      body: { token },
+    });
+    setOpeningAttachment(false);
+    if (fnError || data?.error || !data?.url) {
+      console.error('Failed to open attachment:', fnError || data?.error);
+      return;
+    }
+    window.open(data.url, '_blank', 'noopener,noreferrer');
   };
 
   if (loading) {
@@ -159,15 +177,14 @@ const TenantBillView = () => {
         )}
 
         {split.attachment_path && (
-          <a
-            href={supabase.storage.from('bill-attachments').getPublicUrl(split.attachment_path).data.publicUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center text-sm text-primary-600 hover:text-primary-700 mb-6"
+          <button
+            onClick={handleViewAttachment}
+            disabled={openingAttachment}
+            className="flex items-center text-sm text-primary-600 hover:text-primary-700 mb-6 disabled:opacity-50"
           >
             <Paperclip className="w-4 h-4 mr-2" />
-            View original bill ({split.attachment_name || 'attachment'})
-          </a>
+            {openingAttachment ? 'Opening...' : `View original bill (${split.attachment_name || 'attachment'})`}
+          </button>
         )}
 
         {split.status === 'paid' ? (

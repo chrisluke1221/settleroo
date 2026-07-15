@@ -12,6 +12,14 @@ const jsonResponse = (body, status = 200) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
+const escapeHtml = (value) =>
+  String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -69,14 +77,18 @@ Deno.serve(async (req) => {
     const appUrl = Deno.env.get('APP_URL') ?? 'https://roomietab.netlify.app';
     const billLink = `${appUrl}/bill/${split.access_token}`;
 
+    const billType = escapeHtml(split.bills.bill_type);
+    const tenantName = escapeHtml(split.tenant_name);
+    const room = escapeHtml(split.room);
+
     const html = `
       <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
-        <h2 style="text-transform: capitalize;">${split.bills.bill_type} Bill</h2>
-        <p>Hi ${split.tenant_name},</p>
-        <p>Your share of the ${split.bills.bill_type} bill for ${split.bills.billing_period_start} to ${split.bills.billing_period_end} is:</p>
+        <h2 style="text-transform: capitalize;">${billType} Bill</h2>
+        <p>Hi ${tenantName},</p>
+        <p>Your share of the ${billType} bill for ${split.bills.billing_period_start} to ${split.bills.billing_period_end} is:</p>
         <p style="font-size: 28px; font-weight: bold; color: #4f46e5;">$${Number(split.owed_amount).toFixed(2)}</p>
         <p>That's ${split.percentage}% of the total $${Number(split.bills.total_amount).toFixed(2)} bill, based on
-        ${split.occupancy_days} day(s) of occupancy with ${split.number_of_occupants} occupant(s) in ${split.room}.</p>
+        ${split.occupancy_days} day(s) of occupancy with ${split.number_of_occupants} occupant(s) in ${room}.</p>
         ${split.bills.due_date ? `<p><strong>Due:</strong> ${split.bills.due_date}</p>` : ''}
         <p>
           <a href="${billLink}" style="display:inline-block;background:#4f46e5;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;">
@@ -106,9 +118,10 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Failed to send email', details: errBody }, 502);
     }
 
+    const ninetyDaysFromNow = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
     await adminClient
       .from('bill_splits')
-      .update({ email_sent_at: new Date().toISOString() })
+      .update({ email_sent_at: new Date().toISOString(), expires_at: ninetyDaysFromNow })
       .eq('id', splitId);
 
     return jsonResponse({ success: true });

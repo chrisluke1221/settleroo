@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from './AuthContext';
+import { computeSplits } from '../lib/billSplit';
 
 const PropertyContext = createContext();
 
@@ -10,39 +11,6 @@ export const useProperties = () => {
     throw new Error('useProperties must be used within a PropertyProvider');
   }
   return context;
-};
-
-const computeSplits = (propertyTenants, periodStart, periodEnd, totalAmount) => {
-  const start = new Date(periodStart);
-  const end = new Date(periodEnd);
-
-  const perTenantDays = propertyTenants
-    .map((tenant) => {
-      const moveIn = new Date(tenant.move_in_date);
-      const moveOut = tenant.move_out_date ? new Date(tenant.move_out_date) : null;
-      const occStart = moveIn > start ? moveIn : start;
-      const occEnd = moveOut && moveOut < end ? moveOut : end;
-      const occupancyDays = Math.max(0, Math.round((occEnd - occStart) / 86400000) + 1);
-      const personDays = occupancyDays * (tenant.number_of_occupants || 1);
-      return { tenant, occStart, occEnd, occupancyDays, personDays };
-    })
-    .filter((t) => t.personDays > 0);
-
-  const totalPersonDays = perTenantDays.reduce((sum, t) => sum + t.personDays, 0);
-  if (totalPersonDays === 0) return [];
-
-  return perTenantDays.map(({ tenant, occStart, occEnd, occupancyDays, personDays }) => ({
-    tenant_id: tenant.id,
-    tenant_name: tenant.name,
-    room: tenant.room,
-    number_of_occupants: tenant.number_of_occupants || 1,
-    occupancy_days: occupancyDays,
-    person_days: personDays,
-    percentage: Math.round((personDays / totalPersonDays) * 10000) / 100,
-    owed_amount: Math.round((personDays / totalPersonDays) * totalAmount * 100) / 100,
-    occupancy_start: occStart.toISOString().slice(0, 10),
-    occupancy_end: occEnd.toISOString().slice(0, 10),
-  }));
 };
 
 export const PropertyProvider = ({ children }) => {
@@ -90,77 +58,6 @@ export const PropertyProvider = ({ children }) => {
     refresh().catch((err) => console.error('Failed to load property data:', err));
   }, [refresh]);
 
-  // Bills don't carry property_id directly, so a bill "belongs" to a property
-  // through the tenants its existing splits point at. Any bill that already
-  // splits across one of this property's tenants gets recomputed.
-  const recalcBillsForProperty = async (propertyId, currentPropertyTenants) => {
-    const propertyTenantIds = new Set(
-      tenants.filter((t) => t.property_id === propertyId).map((t) => t.id)
-    );
-    const affectedBillIds = [
-      ...new Set(billSplits.filter((s) => propertyTenantIds.has(s.tenant_id)).map((s) => s.bill_id)),
-    ];
-    if (affectedBillIds.length === 0) return;
-
-    for (const billId of affectedBillIds) {
-      const bill = bills.find((b) => b.id === billId);
-      if (!bill) continue;
-
-      const newSplits = computeSplits(
-        currentPropertyTenants,
-        bill.billing_period_start,
-        bill.billing_period_end,
-        bill.total_amount
-      );
-
-      const existingByTenantId = new Map(
-        billSplits.filter((s) => s.bill_id === billId).map((s) => [s.tenant_id, s])
-      );
-      const newTenantIds = new Set(newSplits.map((s) => s.tenant_id));
-
-      const toUpdate = newSplits.filter((s) => existingByTenantId.has(s.tenant_id));
-      const toInsert = newSplits
-        .filter((s) => !existingByTenantId.has(s.tenant_id))
-        .map((s) => ({ ...s, bill_id: billId, landlord_id: user.id }));
-      const toDeleteIds = [...existingByTenantId.values()]
-        .filter((s) => !newTenantIds.has(s.tenant_id))
-        .map((s) => s.id);
-
-      // Existing rows keep their id/access_token/status/email_sent_at — only
-      // the recomputed numbers change, so previously shared tenant links and
-      // paid/viewed status survive a tenant list change.
-      const updatedRows = await Promise.all(
-        toUpdate.map(async (s) => {
-          const existing = existingByTenantId.get(s.tenant_id);
-          const { tenant_id, ...fields } = s;
-          const { data, error } = await supabase
-            .from('bill_splits')
-            .update(fields)
-            .eq('id', existing.id)
-            .select()
-            .single();
-          if (error) throw error;
-          return data;
-        })
-      );
-
-      let insertedRows = [];
-      if (toInsert.length > 0) {
-        const { data, error: insertError } = await supabase.from('bill_splits').insert(toInsert).select();
-        if (insertError) throw insertError;
-        insertedRows = data;
-      }
-
-      if (toDeleteIds.length > 0) {
-        const { error: deleteError } = await supabase.from('bill_splits').delete().in('id', toDeleteIds);
-        if (deleteError) throw deleteError;
-      }
-
-      const newBillSplitRows = [...updatedRows, ...insertedRows];
-      setBillSplits((prev) => [...prev.filter((s) => s.bill_id !== billId), ...newBillSplitRows]);
-    }
-  };
-
   const createProperty = async ({ name, address, description }) => {
     const { data, error } = await supabase
       .from('properties')
@@ -179,7 +76,7 @@ export const PropertyProvider = ({ children }) => {
     setTenants((prev) => prev.filter((t) => t.property_id !== propertyId));
   };
 
-  const createTenant = async ({ propertyId, name, email, phone, room, moveInDate, numberOfOccupants }) => {
+  const createTenant = async ({ propertyId, name, email, phone, room, moveInDate, moveOutDate, numberOfOccupants }) => {
     const { data, error } = await supabase
       .from('tenants')
       .insert({
@@ -190,18 +87,13 @@ export const PropertyProvider = ({ children }) => {
         phone: phone || null,
         room,
         move_in_date: moveInDate,
+        move_out_date: moveOutDate || null,
         number_of_occupants: numberOfOccupants || 1,
       })
       .select()
       .single();
     if (error) throw error;
     setTenants((prev) => [data, ...prev]);
-
-    const currentPropertyTenants = [...tenants.filter((t) => t.property_id === propertyId), data];
-    await recalcBillsForProperty(propertyId, currentPropertyTenants).catch((err) =>
-      console.error('Failed to recalculate bills after adding tenant:', err)
-    );
-
     return data;
   };
 
@@ -214,37 +106,30 @@ export const PropertyProvider = ({ children }) => {
       .single();
     if (error) throw error;
     setTenants((prev) => prev.map((t) => (t.id === tenantId ? data : t)));
-
-    const currentPropertyTenants = tenants
-      .map((t) => (t.id === tenantId ? data : t))
-      .filter((t) => t.property_id === data.property_id);
-    await recalcBillsForProperty(data.property_id, currentPropertyTenants).catch((err) =>
-      console.error('Failed to recalculate bills after updating tenant:', err)
-    );
-
     return data;
   };
 
+  // A tenant with any bill history is never hard-deleted — their splits
+  // reference them, and deleting the row would orphan that history (and,
+  // pre-fix, silently rewrote already-paid amounts). They're archived
+  // instead; only a tenant with zero bill history can be truly removed.
   const deleteTenant = async (tenantId) => {
-    const tenant = tenants.find((t) => t.id === tenantId);
+    const hasHistory = billSplits.some((s) => s.tenant_id === tenantId);
+    if (hasHistory) {
+      return updateTenant(tenantId, { status: 'former' });
+    }
     const { error } = await supabase.from('tenants').delete().eq('id', tenantId);
     if (error) throw error;
     setTenants((prev) => prev.filter((t) => t.id !== tenantId));
-
-    if (tenant) {
-      const currentPropertyTenants = tenants.filter(
-        (t) => t.property_id === tenant.property_id && t.id !== tenantId
-      );
-      await recalcBillsForProperty(tenant.property_id, currentPropertyTenants).catch((err) =>
-        console.error('Failed to recalculate bills after removing tenant:', err)
-      );
-    }
+    return null;
   };
 
+  const reactivateTenant = async (tenantId) => updateTenant(tenantId, { status: 'active' });
+
   const createBillWithSplits = async ({ propertyId, billType, totalAmount, periodStart, periodEnd, dueDate }) => {
-    const propertyTenants = tenants.filter((t) => t.property_id === propertyId);
+    const propertyTenants = tenants.filter((t) => t.property_id === propertyId && t.status !== 'former');
     if (propertyTenants.length === 0) {
-      throw new Error('This property has no tenants to split the bill across.');
+      throw new Error('This property has no active tenants to split the bill across.');
     }
 
     const splits = computeSplits(propertyTenants, periodStart, periodEnd, totalAmount);
@@ -255,6 +140,7 @@ export const PropertyProvider = ({ children }) => {
     const { data: bill, error: billError } = await supabase
       .from('bills')
       .insert({
+        property_id: propertyId,
         bill_type: billType,
         total_amount: totalAmount,
         billing_period_start: periodStart,
@@ -279,7 +165,74 @@ export const PropertyProvider = ({ children }) => {
     return { bill, splits: insertedSplits };
   };
 
+  // Explicit, landlord-triggered recompute — never automatic. Refuses to
+  // touch a bill once any tenant has confirmed paying it, since that would
+  // silently rewrite a settled amount (the exact bug the v1 audit caught).
+  const recalculateBill = async (billId) => {
+    const bill = bills.find((b) => b.id === billId);
+    if (!bill) throw new Error('Bill not found');
+
+    const existingSplits = billSplits.filter((s) => s.bill_id === billId);
+    if (existingSplits.some((s) => s.status === 'paid')) {
+      throw new Error('This bill has a payment already confirmed — it can no longer be recalculated.');
+    }
+
+    const propertyTenants = tenants.filter((t) => t.property_id === bill.property_id && t.status !== 'former');
+    const newSplits = computeSplits(
+      propertyTenants,
+      bill.billing_period_start,
+      bill.billing_period_end,
+      bill.total_amount
+    );
+
+    const existingByTenantId = new Map(existingSplits.map((s) => [s.tenant_id, s]));
+    const newTenantIds = new Set(newSplits.map((s) => s.tenant_id));
+
+    const toUpdate = newSplits.filter((s) => existingByTenantId.has(s.tenant_id));
+    const toInsert = newSplits
+      .filter((s) => !existingByTenantId.has(s.tenant_id))
+      .map((s) => ({ ...s, bill_id: billId, landlord_id: user.id }));
+    const toDeleteIds = existingSplits
+      .filter((s) => !newTenantIds.has(s.tenant_id))
+      .map((s) => s.id);
+
+    const updatedRows = await Promise.all(
+      toUpdate.map(async (s) => {
+        const existing = existingByTenantId.get(s.tenant_id);
+        const { tenant_id, ...fields } = s;
+        const { data, error } = await supabase
+          .from('bill_splits')
+          .update(fields)
+          .eq('id', existing.id)
+          .select()
+          .single();
+        if (error) throw error;
+        return data;
+      })
+    );
+
+    let insertedRows = [];
+    if (toInsert.length > 0) {
+      const { data, error: insertError } = await supabase.from('bill_splits').insert(toInsert).select();
+      if (insertError) throw insertError;
+      insertedRows = data;
+    }
+
+    if (toDeleteIds.length > 0) {
+      const { error: deleteError } = await supabase.from('bill_splits').delete().in('id', toDeleteIds);
+      if (deleteError) throw deleteError;
+    }
+
+    const newBillSplitRows = [...updatedRows, ...insertedRows];
+    setBillSplits((prev) => [...prev.filter((s) => s.bill_id !== billId), ...newBillSplitRows]);
+    return newBillSplitRows;
+  };
+
   const deleteBill = async (billId) => {
+    const bill = bills.find((b) => b.id === billId);
+    if (bill?.attachment_path) {
+      await supabase.storage.from('bill-attachments').remove([bill.attachment_path]);
+    }
     const { error } = await supabase.from('bills').delete().eq('id', billId);
     if (error) throw error;
     setBills((prev) => prev.filter((b) => b.id !== billId));
@@ -314,6 +267,15 @@ export const PropertyProvider = ({ children }) => {
       prev.map((s) => (s.id === splitId ? { ...s, email_sent_at: new Date().toISOString() } : s))
     );
     return data;
+  };
+
+  // Rotates a tenant's access_token so any previously shared link stops
+  // working immediately — for a lost device, a mistaken recipient, etc.
+  const revokeSplitToken = async (splitId) => {
+    const { data: newToken, error } = await supabase.rpc('revoke_bill_split_token', { p_split_id: splitId });
+    if (error) throw error;
+    setBillSplits((prev) => prev.map((s) => (s.id === splitId ? { ...s, access_token: newToken } : s)));
+    return newToken;
   };
 
   const uploadBillAttachment = async (billId, file) => {
@@ -354,10 +316,15 @@ export const PropertyProvider = ({ children }) => {
     return data;
   };
 
-  const getBillAttachmentUrl = (attachmentPath) => {
+  // Bucket is private now (P0-6 fix), so the landlord gets a short-lived
+  // signed URL via their own authenticated session (owner-scoped RLS).
+  const getBillAttachmentSignedUrl = async (attachmentPath) => {
     if (!attachmentPath) return null;
-    const { data } = supabase.storage.from('bill-attachments').getPublicUrl(attachmentPath);
-    return data.publicUrl;
+    const { data, error } = await supabase.storage
+      .from('bill-attachments')
+      .createSignedUrl(attachmentPath, 3600);
+    if (error) throw error;
+    return data.signedUrl;
   };
 
   const value = {
@@ -369,15 +336,18 @@ export const PropertyProvider = ({ children }) => {
     refresh,
     setBillSplitStatus,
     sendBillEmail,
+    revokeSplitToken,
     uploadBillAttachment,
     removeBillAttachment,
-    getBillAttachmentUrl,
+    getBillAttachmentSignedUrl,
     createProperty,
     deleteProperty,
     createTenant,
     updateTenant,
     deleteTenant,
+    reactivateTenant,
     createBillWithSplits,
+    recalculateBill,
     deleteBill,
   };
 

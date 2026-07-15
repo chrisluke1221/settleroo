@@ -1,9 +1,27 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, Receipt, Users, Copy, ExternalLink, RotateCcw, CheckCircle2, Mail, MailCheck, Pencil, Paperclip, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  Plus,
+  Trash2,
+  Receipt,
+  Users,
+  Copy,
+  ExternalLink,
+  RotateCcw,
+  CheckCircle2,
+  Mail,
+  MailCheck,
+  Pencil,
+  Paperclip,
+  X,
+  Archive,
+  RefreshCw,
+  ShieldOff,
+} from 'lucide-react';
 import { useProperties } from '../contexts/PropertyContext';
 
-const emptyTenant = { name: '', email: '', phone: '', room: '', moveInDate: '', numberOfOccupants: 1 };
+const emptyTenant = { name: '', email: '', phone: '', room: '', moveInDate: '', moveOutDate: '', numberOfOccupants: 1 };
 const emptyBill = { billType: 'utilities', totalAmount: '', periodStart: '', periodEnd: '', dueDate: '' };
 
 const STATUS_STYLES = {
@@ -22,19 +40,25 @@ const PropertyDetail = () => {
     createTenant,
     updateTenant,
     deleteTenant,
+    reactivateTenant,
     createBillWithSplits,
+    recalculateBill,
     deleteBill,
     setBillSplitStatus,
     sendBillEmail,
+    revokeSplitToken,
     uploadBillAttachment,
     removeBillAttachment,
-    getBillAttachmentUrl,
+    getBillAttachmentSignedUrl,
   } = useProperties();
 
   const [sendingSplitId, setSendingSplitId] = useState(null);
   const [emailError, setEmailError] = useState('');
   const [uploadingBillId, setUploadingBillId] = useState(null);
   const [attachmentError, setAttachmentError] = useState('');
+  const [openingAttachmentBillId, setOpeningAttachmentBillId] = useState(null);
+  const [recalculatingBillId, setRecalculatingBillId] = useState(null);
+  const [recalcError, setRecalcError] = useState('');
 
   const ALLOWED_ATTACHMENT_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
   const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB
@@ -65,7 +89,43 @@ const PropertyDetail = () => {
     }
   };
 
+  const handleViewAttachment = async (bill) => {
+    setAttachmentError('');
+    setOpeningAttachmentBillId(bill.id);
+    try {
+      const url = await getBillAttachmentSignedUrl(bill.attachment_path);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      console.error('Failed to open attachment:', err);
+      setAttachmentError(err.message || 'Failed to open attachment');
+    } finally {
+      setOpeningAttachmentBillId(null);
+    }
+  };
+
+  const handleRecalculate = async (billId) => {
+    setRecalcError('');
+    setRecalculatingBillId(billId);
+    try {
+      await recalculateBill(billId);
+    } catch (err) {
+      console.error('Failed to recalculate bill:', err);
+      setRecalcError(err.message || 'Failed to recalculate bill');
+    } finally {
+      setRecalculatingBillId(null);
+    }
+  };
+
   const tenantById = (tenantId) => tenants.find((t) => t.id === tenantId);
+
+  const handleRevokeLink = async (split) => {
+    if (!window.confirm(`Revoke ${split.tenant_name}'s current bill link? The old link will stop working immediately.`)) return;
+    try {
+      await revokeSplitToken(split.id);
+    } catch (err) {
+      console.error('Failed to revoke link:', err);
+    }
+  };
 
   const handleSendEmail = async (split) => {
     const tenant = tenantById(split.tenant_id);
@@ -86,10 +146,10 @@ const PropertyDetail = () => {
   };
 
   const property = properties.find((p) => p.id === propertyId);
-  const propertyTenants = tenants.filter((t) => t.property_id === propertyId);
-  const propertyBills = bills.filter((b) =>
-    billSplits.some((s) => s.bill_id === b.id && propertyTenants.some((t) => t.id === s.tenant_id))
-  );
+  const allPropertyTenants = tenants.filter((t) => t.property_id === propertyId);
+  const activeTenants = allPropertyTenants.filter((t) => t.status !== 'former');
+  const formerTenants = allPropertyTenants.filter((t) => t.status === 'former');
+  const propertyBills = bills.filter((b) => b.property_id === propertyId);
 
   const [showTenantForm, setShowTenantForm] = useState(false);
   const [tenantForm, setTenantForm] = useState(emptyTenant);
@@ -121,6 +181,10 @@ const PropertyDetail = () => {
       setTenantError('Name, room, and move-in date are required');
       return;
     }
+    if (tenantForm.moveOutDate && tenantForm.moveOutDate < tenantForm.moveInDate) {
+      setTenantError('Move-out date must be on or after the move-in date');
+      return;
+    }
     if (tenantForm.email.trim() && !EMAIL_PATTERN.test(tenantForm.email.trim())) {
       setTenantError('That email address doesn\'t look valid');
       return;
@@ -135,6 +199,7 @@ const PropertyDetail = () => {
           phone: tenantForm.phone.trim() || null,
           room: tenantForm.room.trim(),
           move_in_date: tenantForm.moveInDate,
+          move_out_date: tenantForm.moveOutDate || null,
           number_of_occupants: tenantForm.numberOfOccupants,
         });
       } else {
@@ -158,6 +223,7 @@ const PropertyDetail = () => {
       phone: tenant.phone || '',
       room: tenant.room,
       moveInDate: tenant.move_in_date,
+      moveOutDate: tenant.move_out_date || '',
       numberOfOccupants: tenant.number_of_occupants,
     });
     setEditingTenantId(tenant.id);
@@ -170,6 +236,28 @@ const PropertyDetail = () => {
     setEditingTenantId(null);
     setTenantForm(emptyTenant);
     setTenantError('');
+  };
+
+  const handleDeleteTenant = async (tenant) => {
+    const hasHistory = billSplits.some((s) => s.tenant_id === tenant.id);
+    const message = hasHistory
+      ? `${tenant.name} has bill history, so they'll be archived (marked former) instead of deleted, to keep past bills intact. Continue?`
+      : `Delete ${tenant.name}? This cannot be undone.`;
+    if (!window.confirm(message)) return;
+    try {
+      await deleteTenant(tenant.id);
+    } catch (err) {
+      console.error('Failed to remove tenant:', err);
+    }
+  };
+
+  const handleDeleteBill = async (bill) => {
+    if (!window.confirm(`Delete this ${bill.bill_type} bill and all its tenant splits? This cannot be undone.`)) return;
+    try {
+      await deleteBill(bill.id);
+    } catch (err) {
+      console.error('Failed to delete bill:', err);
+    }
   };
 
   const handleBillSubmit = async (e) => {
@@ -270,12 +358,24 @@ const PropertyDetail = () => {
                 value={tenantForm.phone}
                 onChange={(e) => setTenantForm((p) => ({ ...p, phone: e.target.value }))}
               />
-              <input
-                type="date"
-                className="input-field"
-                value={tenantForm.moveInDate}
-                onChange={(e) => setTenantForm((p) => ({ ...p, moveInDate: e.target.value }))}
-              />
+              <div>
+                <label className="block text-xs text-secondary-500 mb-1">Move-in date</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  value={tenantForm.moveInDate}
+                  onChange={(e) => setTenantForm((p) => ({ ...p, moveInDate: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-secondary-500 mb-1">Move-out date (optional)</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  value={tenantForm.moveOutDate}
+                  onChange={(e) => setTenantForm((p) => ({ ...p, moveOutDate: e.target.value }))}
+                />
+              </div>
             </div>
             {tenantError && <p className="text-red-600 text-sm">{tenantError}</p>}
             <div className="flex space-x-3">
@@ -289,17 +389,20 @@ const PropertyDetail = () => {
           </form>
         )}
 
-        {propertyTenants.length === 0 ? (
-          <p className="text-secondary-500">No tenants yet.</p>
+        {activeTenants.length === 0 ? (
+          <p className="text-secondary-500">No active tenants.</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {propertyTenants.map((tenant) => (
+            {activeTenants.map((tenant) => (
               <div key={tenant.id} className="card flex items-start justify-between">
                 <div>
                   <p className="font-semibold text-secondary-900">{tenant.name}</p>
                   <p className="text-sm text-secondary-600">Room: {tenant.room}</p>
                   <p className="text-sm text-secondary-600">Occupants: {tenant.number_of_occupants}</p>
                   <p className="text-sm text-secondary-500">Moved in: {tenant.move_in_date}</p>
+                  {tenant.move_out_date && (
+                    <p className="text-sm text-secondary-500">Moves out: {tenant.move_out_date}</p>
+                  )}
                 </div>
                 <div className="flex items-center space-x-2">
                   <button
@@ -309,14 +412,41 @@ const PropertyDetail = () => {
                     <Pencil className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => deleteTenant(tenant.id)}
+                    onClick={() => handleDeleteTenant(tenant)}
                     className="text-secondary-300 hover:text-red-500"
+                    title="Delete or archive"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {formerTenants.length > 0 && (
+          <div className="mt-6">
+            <p className="text-xs font-semibold text-secondary-500 uppercase tracking-wide mb-2">Former tenants</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {formerTenants.map((tenant) => (
+                <div key={tenant.id} className="card flex items-start justify-between opacity-70">
+                  <div>
+                    <p className="font-semibold text-secondary-900">{tenant.name}</p>
+                    <p className="text-sm text-secondary-600">Room: {tenant.room}</p>
+                    <p className="text-sm text-secondary-500">
+                      {tenant.move_in_date} to {tenant.move_out_date || '—'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => reactivateTenant(tenant.id)}
+                    className="text-secondary-400 hover:text-primary-600"
+                    title="Reactivate"
+                  >
+                    <Archive className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </section>
@@ -329,7 +459,7 @@ const PropertyDetail = () => {
           </h2>
           <button
             onClick={() => setShowBillForm((s) => !s)}
-            disabled={propertyTenants.length === 0}
+            disabled={activeTenants.length === 0}
             className="btn-secondary flex items-center space-x-2 disabled:opacity-50"
           >
             <Plus className="w-4 h-4" />
@@ -398,6 +528,7 @@ const PropertyDetail = () => {
           <div className="space-y-4">
             {propertyBills.map((bill) => {
               const splits = billSplits.filter((s) => s.bill_id === bill.id);
+              const hasPaidSplit = splits.some((s) => s.status === 'paid');
               return (
                 <div key={bill.id} className="card">
                   <div className="flex items-center justify-between mb-3">
@@ -410,23 +541,36 @@ const PropertyDetail = () => {
                         {bill.due_date && <> &middot; Due {bill.due_date}</>}
                       </p>
                     </div>
-                    <button onClick={() => deleteBill(bill.id)} className="text-secondary-300 hover:text-red-500">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center space-x-3">
+                      <button
+                        onClick={() => handleRecalculate(bill.id)}
+                        disabled={hasPaidSplit || recalculatingBillId === bill.id}
+                        title={
+                          hasPaidSplit
+                            ? 'A tenant has already paid this bill — recalculating is blocked to protect that record'
+                            : 'Recompute the split against the current tenant list'
+                        }
+                        className="text-secondary-400 hover:text-primary-600 disabled:opacity-30 disabled:hover:text-secondary-400"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${recalculatingBillId === bill.id ? 'animate-spin' : ''}`} />
+                      </button>
+                      <button onClick={() => handleDeleteBill(bill)} className="text-secondary-300 hover:text-red-500">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mb-4 flex items-center space-x-3 text-sm">
                     {bill.attachment_path ? (
                       <>
-                        <a
-                          href={getBillAttachmentUrl(bill.attachment_path)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center space-x-1 text-primary-600 hover:text-primary-700"
+                        <button
+                          onClick={() => handleViewAttachment(bill)}
+                          disabled={openingAttachmentBillId === bill.id}
+                          className="inline-flex items-center space-x-1 text-primary-600 hover:text-primary-700 disabled:opacity-50"
                         >
                           <Paperclip className="w-4 h-4" />
-                          <span>{bill.attachment_name || 'View attachment'}</span>
-                        </a>
+                          <span>{openingAttachmentBillId === bill.id ? 'Opening...' : bill.attachment_name || 'View attachment'}</span>
+                        </button>
                         <button
                           onClick={() => removeBillAttachment(bill.id)}
                           className="text-secondary-300 hover:text-red-500"
@@ -450,6 +594,7 @@ const PropertyDetail = () => {
                     )}
                   </div>
                   {attachmentError && <p className="text-red-600 text-xs mb-3">{attachmentError}</p>}
+                  {recalcError && <p className="text-red-600 text-xs mb-3">{recalcError}</p>}
 
                   <table className="w-full text-sm">
                     <thead>
@@ -469,7 +614,7 @@ const PropertyDetail = () => {
                           <td className="py-1">{split.tenant_name}</td>
                           <td className="py-1">{split.room}</td>
                           <td className="py-1">{split.percentage}%</td>
-                          <td className="py-1 text-right font-medium">${Number(split.owed_amount).toFixed(2)}</td>
+                          <td className="py-1 text-right font-medium tabular-nums">${Number(split.owed_amount).toFixed(2)}</td>
                           <td className="py-1 text-center">
                             <span
                               className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
@@ -498,6 +643,13 @@ const PropertyDetail = () => {
                                 className="text-secondary-400 hover:text-primary-600"
                               >
                                 <Copy className="w-4 h-4" />
+                              </button>
+                              <button
+                                title="Revoke this link (rotates the token)"
+                                onClick={() => handleRevokeLink(split)}
+                                className="text-secondary-400 hover:text-red-500"
+                              >
+                                <ShieldOff className="w-4 h-4" />
                               </button>
                               {split.status === 'paid' ? (
                                 <button
