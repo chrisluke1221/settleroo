@@ -1,6 +1,6 @@
 {
-  "short_name": "RoomTab",
-  "name": "RoomTab - Split Bills with Friends",
+  "short_name": "RoomieTab",
+  "name": "RoomieTab — From bill to settled, without you.",
   "icons": [
     {
       "src": "favicon.ico",
@@ -20,6 +20,6 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "theme_color": "#0d9488",
+  "background_color": "#fafaf9"
 }

@@ -1,9 +1,10 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { HelmetProvider, Helmet } from 'react-helmet-async';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import Home from './pages/Home';
+import Dashboard from './pages/Dashboard';
 import Properties from './pages/Properties';
 import PropertyDetail from './pages/PropertyDetail';
 import Login from './pages/Login';
@@ -11,67 +12,95 @@ import TenantBillView from './pages/TenantBillView';
 import { PropertyProvider } from './contexts/PropertyContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
-const PageTransition = ({ children }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -20 }}
-    transition={{ duration: 0.3 }}
-  >
-    {children}
-  </motion.div>
-);
-
 const RequireAuth = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
   if (loading) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return children;
+  return (
+    <>
+      <Helmet defer={false}>
+        <meta name="robots" content="noindex" />
+      </Helmet>
+      {children}
+    </>
+  );
+};
+
+// An authenticated landlord lands on their work queue, not the marketing
+// page — the marketing page is only for logged-out visitors.
+const HomeOrDashboard = () => {
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) return null;
+  return isAuthenticated ? <Navigate to="/dashboard" replace /> : <Home />;
 };
 
 function AppRoutes() {
   return (
-    <AnimatePresence mode="wait">
-      <Routes>
-        <Route path="/" element={<PageTransition><Home /></PageTransition>} />
-        <Route path="/login" element={<PageTransition><Login /></PageTransition>} />
-        <Route path="/bill/:token" element={<PageTransition><TenantBillView /></PageTransition>} />
-        <Route
-          path="/properties"
-          element={
-            <RequireAuth>
-              <PageTransition><Properties /></PageTransition>
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/properties/:propertyId"
-          element={
-            <RequireAuth>
-              <PageTransition><PropertyDetail /></PageTransition>
-            </RequireAuth>
-          }
-        />
-      </Routes>
-    </AnimatePresence>
+    <Routes>
+      <Route path="/" element={<HomeOrDashboard />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/bill/:token" element={<TenantBillView />} />
+      <Route
+        path="/dashboard"
+        element={
+          <RequireAuth>
+            <Dashboard />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/properties"
+        element={
+          <RequireAuth>
+            <Properties />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/properties/:propertyId"
+        element={
+          <RequireAuth>
+            <PropertyDetail />
+          </RequireAuth>
+        }
+      />
+    </Routes>
   );
 }
 
+// The tenant bill link never gets the landlord's nav/account/logout chrome —
+// anyone holding the link can open it, and TenantBillView renders its own
+// standalone shell.
+const AppShell = () => {
+  const location = useLocation();
+  const isTenantRoute = location.pathname.startsWith('/bill/');
+
+  if (isTenantRoute) {
+    return <AppRoutes />;
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col bg-secondary-50">
+      <Header />
+      <main className="flex-1">
+        <AppRoutes />
+      </main>
+      <Footer />
+    </div>
+  );
+};
+
 function App() {
   return (
-    <AuthProvider>
-      <PropertyProvider>
-        <Router>
-          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-            <Header />
-            <main className="flex-1">
-              <AppRoutes />
-            </main>
-            <Footer />
-          </div>
-        </Router>
-      </PropertyProvider>
-    </AuthProvider>
+    <HelmetProvider>
+      <AuthProvider>
+        <PropertyProvider>
+          <Router>
+            <AppShell />
+          </Router>
+        </PropertyProvider>
+      </AuthProvider>
+    </HelmetProvider>
   );
 }
 

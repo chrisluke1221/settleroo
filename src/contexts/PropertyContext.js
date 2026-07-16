@@ -22,6 +22,7 @@ export const PropertyProvider = ({ children }) => {
   const [billSplits, setBillSplits] = useState([]);
   const [rentRates, setRentRates] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const refresh = useCallback(async () => {
     if (!user) {
@@ -33,36 +34,43 @@ export const PropertyProvider = ({ children }) => {
       return;
     }
     setLoading(true);
-    const [
-      { data: propertiesData, error: propertiesError },
-      { data: tenantsData, error: tenantsError },
-      { data: billsData, error: billsError },
-      { data: billSplitsData, error: billSplitsError },
-      { data: rentRatesData, error: rentRatesError },
-    ] = await Promise.all([
-      supabase.from('properties').select('*').order('created_at', { ascending: false }),
-      supabase.from('tenants').select('*').order('created_at', { ascending: false }),
-      supabase.from('bills').select('*').order('created_at', { ascending: false }),
-      supabase.from('bill_splits').select('*'),
-      supabase.from('rent_rates').select('*').order('effective_from', { ascending: true }),
-    ]);
+    setError(null);
+    try {
+      const [
+        { data: propertiesData, error: propertiesError },
+        { data: tenantsData, error: tenantsError },
+        { data: billsData, error: billsError },
+        { data: billSplitsData, error: billSplitsError },
+        { data: rentRatesData, error: rentRatesError },
+      ] = await Promise.all([
+        supabase.from('properties').select('*').order('created_at', { ascending: false }),
+        supabase.from('tenants').select('*').order('created_at', { ascending: false }),
+        supabase.from('bills').select('*').order('created_at', { ascending: false }),
+        supabase.from('bill_splits').select('*'),
+        supabase.from('rent_rates').select('*').order('effective_from', { ascending: true }),
+      ]);
 
-    if (propertiesError) throw propertiesError;
-    if (tenantsError) throw tenantsError;
-    if (billsError) throw billsError;
-    if (billSplitsError) throw billSplitsError;
-    if (rentRatesError) throw rentRatesError;
+      if (propertiesError) throw propertiesError;
+      if (tenantsError) throw tenantsError;
+      if (billsError) throw billsError;
+      if (billSplitsError) throw billSplitsError;
+      if (rentRatesError) throw rentRatesError;
 
-    setProperties(propertiesData ?? []);
-    setTenants(tenantsData ?? []);
-    setBills(billsData ?? []);
-    setBillSplits(billSplitsData ?? []);
-    setRentRates(rentRatesData ?? []);
-    setLoading(false);
+      setProperties(propertiesData ?? []);
+      setTenants(tenantsData ?? []);
+      setBills(billsData ?? []);
+      setBillSplits(billSplitsData ?? []);
+      setRentRates(rentRatesData ?? []);
+    } catch (err) {
+      console.error('Failed to load property data:', err);
+      setError(err.message || 'Failed to load your data');
+    } finally {
+      setLoading(false);
+    }
   }, [user]);
 
   useEffect(() => {
-    refresh().catch((err) => console.error('Failed to load property data:', err));
+    refresh();
   }, [refresh]);
 
   const createProperty = async ({ name, address, description }) => {
@@ -533,6 +541,7 @@ export const PropertyProvider = ({ children }) => {
     billSplits,
     rentRates,
     loading,
+    error,
     refresh,
     setBillSplitStatus,
     sendBillEmail,

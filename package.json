@@ -1,7 +1,7 @@
 {
-  "name": "roomtab",
+  "name": "roomietab",
   "version": "1.0.0",
-  "description": "A modern room management and tab splitting application",
+  "description": "The settlement layer for rent-by-the-room — landlord tool for splitting shared bills by occupancy.",
   "private": true,
   "dependencies": {
     "@supabase/supabase-js": "^2.110.3",
@@ -15,6 +15,7 @@
     "postcss": "^8.4.21",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-helmet-async": "^2.0.5",
     "react-router-dom": "^6.3.0",
     "react-scripts": "5.0.1",
     "tailwindcss": "^3.2.7",

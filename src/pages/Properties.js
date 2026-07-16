@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Plus, Home, MapPin, Users, Trash2 } from 'lucide-react';
+import { Plus, Home, MapPin, Users, Trash2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperties } from '../contexts/PropertyContext';
 
 const Properties = () => {
   const { user } = useAuth();
-  const { properties, tenants, loading, createProperty, deleteProperty } = useProperties();
+  const { properties, tenants, loading, error: loadError, refresh, createProperty, deleteProperty } = useProperties();
   const navigate = useNavigate();
 
   const [showForm, setShowForm] = useState(false);
@@ -100,7 +100,7 @@ const Properties = () => {
                 onChange={(e) => setFormData((p) => ({ ...p, description: e.target.value }))}
               />
             </div>
-            {error && <p className="text-red-600 text-sm">{error}</p>}
+            {error && <p className="text-danger-600 text-sm">{error}</p>}
             <div className="flex space-x-3">
               <button type="submit" disabled={isSubmitting} className="btn-primary">
                 {isSubmitting ? 'Creating...' : 'Create Property'}
@@ -115,6 +115,14 @@ const Properties = () => {
 
       {loading ? (
         <p className="text-secondary-600">Loading...</p>
+      ) : loadError ? (
+        <div className="card text-center py-16">
+          <AlertCircle className="w-10 h-10 text-danger-600 mx-auto mb-3" />
+          <p className="text-secondary-700 mb-4">Couldn't load your properties: {loadError}</p>
+          <button onClick={refresh} className="btn-secondary">
+            Try again
+          </button>
+        </div>
       ) : properties.length === 0 ? (
         <div className="card text-center py-16">
           <Home className="w-12 h-12 text-secondary-300 mx-auto mb-4" />
@@ -130,7 +138,7 @@ const Properties = () => {
             >
               <button
                 onClick={(e) => handleDelete(e, property.id)}
-                className="absolute top-4 right-4 text-secondary-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute top-4 right-4 text-secondary-300 hover:text-danger-600 opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
