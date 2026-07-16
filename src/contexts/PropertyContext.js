@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from './AuthContext';
 import { computeSplits } from '../lib/billSplit';
 import { computeRentForPeriod, ratesOverlap } from '../lib/rentCalc';
+import { formatLocalDate } from '../lib/dates';
 
 const PropertyContext = createContext();
 
@@ -21,7 +22,7 @@ export const PropertyProvider = ({ children }) => {
   const [bills, setBills] = useState([]);
   const [billSplits, setBillSplits] = useState([]);
   const [rentRates, setRentRates] = useState([]);
-  const [landlordSettings, setLandlordSettings] = useState({ notify_overdue: true });
+  const [landlordSettings, setLandlordSettings] = useState({ notify_overdue: true, notify_rent: true });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -32,7 +33,7 @@ export const PropertyProvider = ({ children }) => {
       setBills([]);
       setBillSplits([]);
       setRentRates([]);
-      setLandlordSettings({ notify_overdue: true });
+      setLandlordSettings({ notify_overdue: true, notify_rent: true });
       return;
     }
     setLoading(true);
@@ -65,21 +66,49 @@ export const PropertyProvider = ({ children }) => {
       setBills(billsData ?? []);
       setBillSplits(billSplitsData ?? []);
       setRentRates(rentRatesData ?? []);
-      // No row yet just means the landlord never changed the default —
-      // notify_overdue defaults to on until they explicitly toggle it.
-      setLandlordSettings(settingsData ?? { notify_overdue: true });
+      // No row yet just means the landlord never changed the defaults —
+      // both toggles default to on until explicitly changed.
+      const settings = settingsData ?? { notify_overdue: true, notify_rent: true };
+      setLandlordSettings(settings);
+
+      // Catch up on any rent that should have been generated since last
+      // login — passes the just-fetched arrays directly rather than reading
+      // state, since setX() above hasn't landed in this closure yet.
+      await generateDueRentBills({
+        properties: propertiesData ?? [],
+        tenants: tenantsData ?? [],
+        bills: billsData ?? [],
+        rentRates: rentRatesData ?? [],
+        settings,
+      });
     } catch (err) {
       console.error('Failed to load property data:', err);
       setError(err.message || 'Failed to load your data');
     } finally {
       setLoading(false);
     }
+    // generateDueRentBills (like every other helper in this file besides
+    // refresh) is a plain function recreated each render, not memoized —
+    // it's intentionally not in this dependency list, same as every other
+    // context function this file calls without listing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const setNotifyOverdue = async (enabled) => {
     const { data, error } = await supabase
       .from('landlord_settings')
       .upsert({ landlord_id: user.id, notify_overdue: enabled }, { onConflict: 'landlord_id' })
+      .select()
+      .single();
+    if (error) throw error;
+    setLandlordSettings(data);
+    return data;
+  };
+
+  const setNotifyRent = async (enabled) => {
+    const { data, error } = await supabase
+      .from('landlord_settings')
+      .upsert({ landlord_id: user.id, notify_rent: enabled }, { onConflict: 'landlord_id' })
       .select()
       .single();
     if (error) throw error;
@@ -508,21 +537,25 @@ export const PropertyProvider = ({ children }) => {
   // charged their own rate (resolved day-by-day, prorated across any
   // mid-period rate change) rather than a portion of one shared total.
   // The "total" is just the sum of everyone's own charge.
-  const createRentBill = async ({ propertyId, periodStart, periodEnd, dueDate }) => {
-    const propertyTenants = tenants.filter((t) => t.property_id === propertyId && t.status !== 'former');
-
-    const charges = propertyTenants
+  //
+  // A rate's own effective_to window isn't enough on its own — a tenant who
+  // moves out without their rate being explicitly end-dated would otherwise
+  // keep being charged forever. Every rent computation clamps the period to
+  // the tenant's move_out_date as well as the rate's own window.
+  const buildRentCharges = (propertyTenants, rentRatesList, periodStart, periodEnd) => {
+    return propertyTenants
       .map((tenant) => {
-        const tenantRates = rentRates.filter((r) => r.tenant_id === tenant.id);
-        const { totalCents, segments } = computeRentForPeriod(tenantRates, periodStart, periodEnd);
+        const tenantRates = rentRatesList.filter((r) => r.tenant_id === tenant.id);
+        const clampedEnd =
+          tenant.move_out_date && tenant.move_out_date < periodEnd ? tenant.move_out_date : periodEnd;
+        if (clampedEnd < periodStart) return { tenant, totalCents: 0, segments: [] };
+        const { totalCents, segments } = computeRentForPeriod(tenantRates, periodStart, clampedEnd);
         return { tenant, totalCents, segments };
       })
       .filter((c) => c.totalCents > 0);
+  };
 
-    if (charges.length === 0) {
-      throw new Error('No tenant has a rent rate covering this period.');
-    }
-
+  const insertRentBillRow = async (propertyId, periodStart, periodEnd, dueDate, charges) => {
     const totalCents = charges.reduce((sum, c) => sum + c.totalCents, 0);
 
     const { data: bill, error: billError } = await supabase
@@ -567,6 +600,104 @@ export const PropertyProvider = ({ children }) => {
     return { bill, splits: insertedSplits };
   };
 
+  // Manual, landlord-triggered generation for an arbitrary period — kept
+  // alongside the automatic monthly generation below for backfilling history
+  // or an out-of-cycle charge.
+  const createRentBill = async ({ propertyId, periodStart, periodEnd, dueDate }) => {
+    const propertyTenants = tenants.filter((t) => t.property_id === propertyId && t.status !== 'former');
+    const charges = buildRentCharges(propertyTenants, rentRates, periodStart, periodEnd);
+    if (charges.length === 0) {
+      throw new Error('No tenant has a rent rate covering this period.');
+    }
+    return insertRentBillRow(propertyId, periodStart, periodEnd, dueDate, charges);
+  };
+
+  // Guards against React StrictMode's dev-mode double-invoke of the mount
+  // effect (both calls would otherwise see "no bill for this period yet" and
+  // both insert) — a fast-path skip for the common case. The database's
+  // bills_unique_rent_period index is the real safety net (covers e.g. two
+  // browser tabs racing in production, which this ref can't see).
+  const rentGenerationInFlight = useRef(false);
+
+  // Runs once per login (from refresh, with freshly-fetched data rather than
+  // this closure's state — see the comment in refresh()). For each property,
+  // auto-generates any missing calendar-month rent bill from the current
+  // month back up to 3 months, so a landlord catches up even after a while
+  // away. Stops charging a tenant from their move-out date via
+  // buildRentCharges; picks up a new rate automatically since it just reads
+  // whatever rate is in force for each day. Silently skips a property/period
+  // with nothing billable (no active tenant has a rate covering it yet).
+  const generateDueRentBills = async ({ properties: propsList, tenants: tenantsList, bills: billsList, rentRates: ratesList, settings }) => {
+    if (rentGenerationInFlight.current) return;
+    rentGenerationInFlight.current = true;
+    try {
+      await generateDueRentBillsInner({ propsList, tenantsList, billsList, ratesList, settings });
+    } finally {
+      rentGenerationInFlight.current = false;
+    }
+  };
+
+  const generateDueRentBillsInner = async ({ propsList, tenantsList, billsList, ratesList, settings }) => {
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const periods = [];
+    for (let i = 3; i >= 0; i--) {
+      const start = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - i, 1);
+      const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+      periods.push({ start: formatLocalDate(start), end: formatLocalDate(end) });
+    }
+
+    for (const property of propsList) {
+      const propertyTenants = tenantsList.filter((t) => t.property_id === property.id && t.status !== 'former');
+      if (propertyTenants.length === 0) continue;
+
+      for (const period of periods) {
+        const alreadyExists = billsList.some(
+          (b) =>
+            b.property_id === property.id &&
+            b.bill_type === 'rent' &&
+            b.billing_period_start === period.start &&
+            b.billing_period_end === period.end
+        );
+        if (alreadyExists) continue;
+
+        const charges = buildRentCharges(propertyTenants, ratesList, period.start, period.end);
+        if (charges.length === 0) continue;
+
+        let inserted;
+        try {
+          inserted = await insertRentBillRow(property.id, period.start, period.end, null, charges);
+        } catch (err) {
+          if (err.code === '23505') {
+            // Another concurrent run (StrictMode's double-invoke, or a
+            // second tab) already created this exact period's bill — the
+            // database's bills_unique_rent_period index is the real guard
+            // here, this is the expected, benign outcome of losing the race.
+          } else {
+            console.error('Failed to auto-generate rent bill:', err);
+          }
+          continue;
+        }
+        // Reflect this period's bill in the list we're iterating so a later
+        // loop iteration (next property, or a future call) doesn't re-check
+        // against stale data within this same run.
+        billsList = [...billsList, inserted.bill];
+
+        if (settings?.notify_rent !== false) {
+          for (const split of inserted.splits) {
+            const tenant = propertyTenants.find((t) => t.id === split.tenant_id);
+            if (!tenant?.email) continue;
+            try {
+              await sendBillEmail(split.id);
+            } catch (err) {
+              console.error('Failed to auto-send rent bill email:', err);
+            }
+          }
+        }
+      }
+    }
+  };
+
   // The 60-second aha: a fully-formed property with two tenants (staggered
   // move-in dates, so the split visibly isn't 50/50) and one utility bill
   // already split — so a new landlord sees the breakdown card before typing
@@ -578,7 +709,7 @@ export const PropertyProvider = ({ children }) => {
     const periodStartDate = new Date(periodEndDate.getFullYear(), periodEndDate.getMonth(), 1);
     const midDate = new Date(periodStartDate);
     midDate.setDate(15);
-    const fmt = (d) => d.toISOString().slice(0, 10);
+    const fmt = formatLocalDate;
 
     const property = await createProperty({
       name: 'Sample Share House',
@@ -742,6 +873,7 @@ export const PropertyProvider = ({ children }) => {
     rentRates,
     landlordSettings,
     setNotifyOverdue,
+    setNotifyRent,
     loading,
     error,
     refresh,
