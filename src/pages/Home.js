@@ -52,6 +52,14 @@ const features = [
   }
 ];
 
+const marqueeItems = [
+  'Split by exact occupancy days',
+  'Tenants never need an account',
+  'Rent bills generate automatically',
+  'Free for your first property',
+  'No spreadsheets, no group chats',
+];
+
 const howItWorks = [
   {
     icon: Mail,
@@ -129,7 +137,7 @@ const BreakdownMockup = () => (
     <p className="text-xs text-secondary-500 mb-4">Hi Alice, here's exactly how your share was calculated.</p>
 
     <div className="bg-primary-50 border border-primary-100 rounded-lg p-3 mb-4 flex items-center justify-between">
-      <div>
+      <div className="rounded-lg animate-soft-pulse">
         <p className="text-xs text-secondary-600">You owe</p>
         <p className="text-2xl font-bold text-primary-700 tabular-nums">$40.00</p>
       </div>
@@ -153,6 +161,24 @@ const BreakdownMockup = () => (
           <span className="font-semibold text-secondary-900 tabular-nums">33.33%</span>
         </div>
       </div>
+    </div>
+  </div>
+);
+
+// Rotating value-prop strip. The track is the item list duplicated once so
+// the CSS animation can translate exactly -50% and loop seamlessly.
+const Marquee = () => (
+  <div className="py-6 bg-white border-b border-secondary-100 overflow-hidden">
+    <div className="flex w-max animate-marquee">
+      {[...marqueeItems, ...marqueeItems].map((item, i) => (
+        <span
+          key={`${item}-${i}`}
+          className="flex items-center text-sm font-medium text-secondary-600 whitespace-nowrap mx-6"
+        >
+          <CheckCircle className="w-4 h-4 text-primary-500 mr-2 flex-shrink-0" />
+          {item}
+        </span>
+      ))}
     </div>
   </div>
 );
@@ -237,6 +263,8 @@ const Home = () => {
           </div>
         </div>
       </section>
+
+      <Marquee />
 
       {/* The differentiator, promoted to its own moment rather than buried in the FAQ */}
       <section className="py-14 bg-white border-b border-secondary-100">
