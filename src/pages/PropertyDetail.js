@@ -24,6 +24,7 @@ import StatusBadge from '../components/StatusBadge';
 import SplitActions from '../components/SplitActions';
 import ConfirmModal from '../components/ConfirmModal';
 import { effectiveStatus } from '../lib/paymentStatus';
+import { todayLocal } from '../lib/dates';
 
 const emptyTenant = {
   name: '',
@@ -48,7 +49,7 @@ const UTILITY_TYPES = [
   { value: 'other', label: 'Other utility' },
 ];
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = todayLocal;
 
 const PropertyDetail = () => {
   const { propertyId } = useParams();
@@ -1209,7 +1210,7 @@ const PropertyDetail = () => {
           </div>
         )}
 
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-1">
           <h3 className="text-sm font-semibold text-secondary-500 uppercase tracking-wide">Rent bills</h3>
           <button
             onClick={() => setShowRentBillForm((s) => !s)}
@@ -1217,9 +1218,13 @@ const PropertyDetail = () => {
             className="btn-secondary flex items-center space-x-2 disabled:opacity-50"
           >
             <Plus className="w-4 h-4" />
-            <span>Generate Rent Bill</span>
+            <span>Generate for a custom period</span>
           </button>
         </div>
+        <p className="text-xs text-secondary-500 mb-4">
+          Each calendar month generates automatically — stopping at move-out, picking up any rate change.
+          Use the button above only to backfill history or bill an out-of-cycle period.
+        </p>
 
         {showRentBillForm && (
           <form onSubmit={handleRentBillSubmit} className="card mb-4 space-y-4">
@@ -1268,7 +1273,7 @@ const PropertyDetail = () => {
         {rentBills.length === 0 ? (
           <div className="card text-center py-12">
             <Inbox className="w-10 h-10 text-secondary-300 mx-auto mb-3" />
-            <p className="text-secondary-600">No rent bills yet.</p>
+            <p className="text-secondary-600">No rent bills yet — one generates automatically once a tenant has a rate set.</p>
           </div>
         ) : (
           <div className="space-y-4">{rentBills.map(renderBillSplits)}</div>

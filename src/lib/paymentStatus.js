@@ -1,3 +1,5 @@
+import { todayLocal } from './dates';
+
 // Centralized so every payment-state chip (splits table, mobile cards,
 // tenant view, dashboard work queue) reads the same colors and labels
 // instead of each screen hardcoding its own.
@@ -25,6 +27,6 @@ export const statusLabel = (status) => STATUS_LABELS[status] || STATUS_LABELS.pe
 export const effectiveStatus = (split, bill) => {
   const status = split.status || 'pending';
   if (status === 'paid') return status;
-  if (bill?.due_date && bill.due_date < new Date().toISOString().slice(0, 10)) return 'overdue';
+  if (bill?.due_date && bill.due_date < todayLocal()) return 'overdue';
   return status;
 };

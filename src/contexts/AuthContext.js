@@ -30,18 +30,25 @@ export const AuthProvider = ({ children }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email, password, fullName) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName } },
+  // Passwordless: no signup/login distinction, no password to set, forget,
+  // or reset — the account is created implicitly on first sign-in either
+  // way. Google supplies a name via user_metadata; magic-link users are
+  // asked for a name once in-app later (at their first bill), not at the
+  // door.
+  const signInWithGoogle = async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/dashboard` },
     });
     if (error) throw error;
     return data;
   };
 
-  const login = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const sendMagicLink = async (email) => {
+    const { data, error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/dashboard` },
+    });
     if (error) throw error;
     return data;
   };
@@ -53,8 +60,8 @@ export const AuthProvider = ({ children }) => {
 
   const value = {
     user,
-    signUp,
-    login,
+    signInWithGoogle,
+    sendMagicLink,
     logout,
     loading,
     isAuthenticated: !!user,
