@@ -542,14 +542,23 @@ export const PropertyProvider = ({ children }) => {
   // moves out without their rate being explicitly end-dated would otherwise
   // keep being charged forever. Every rent computation clamps the period to
   // the tenant's move_out_date as well as the rate's own window.
+  //
+  // Symmetrically, clamp the start to move_in_date rather than trusting a
+  // rate's effective_from alone: addRentRate blocks a *new* rate from
+  // starting before move-in, but editing a tenant's move_in_date afterward
+  // doesn't retroactively touch already-existing rates, so without this
+  // clamp a corrected move-in date can leave stale rate coverage that bills
+  // for days before the tenant actually lived there.
   const buildRentCharges = (propertyTenants, rentRatesList, periodStart, periodEnd) => {
     return propertyTenants
       .map((tenant) => {
         const tenantRates = rentRatesList.filter((r) => r.tenant_id === tenant.id);
+        const clampedStart =
+          tenant.move_in_date && tenant.move_in_date > periodStart ? tenant.move_in_date : periodStart;
         const clampedEnd =
           tenant.move_out_date && tenant.move_out_date < periodEnd ? tenant.move_out_date : periodEnd;
-        if (clampedEnd < periodStart) return { tenant, totalCents: 0, segments: [] };
-        const { totalCents, segments } = computeRentForPeriod(tenantRates, periodStart, clampedEnd);
+        if (clampedEnd < clampedStart) return { tenant, totalCents: 0, segments: [] };
+        const { totalCents, segments } = computeRentForPeriod(tenantRates, clampedStart, clampedEnd);
         return { tenant, totalCents, segments };
       })
       .filter((c) => c.totalCents > 0);
