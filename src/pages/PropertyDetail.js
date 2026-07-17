@@ -1,38 +1,30 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
-  ArrowLeft,
+  ChevronRight,
   Plus,
   Trash2,
   Receipt,
   Users,
-  Copy,
-  ExternalLink,
-  RotateCcw,
-  CheckCircle2,
-  Mail,
-  MailCheck,
   Pencil,
   Paperclip,
   X,
   Archive,
   RefreshCw,
-  ShieldOff,
   DollarSign,
   ChevronDown,
   ChevronUp,
+  Inbox,
+  AlertCircle,
 } from 'lucide-react';
 import { useProperties } from '../contexts/PropertyContext';
+import Money from '../components/Money';
+import StatusBadge from '../components/StatusBadge';
+import SplitActions from '../components/SplitActions';
 
 const emptyTenant = { name: '', email: '', phone: '', room: '', moveInDate: '', moveOutDate: '', numberOfOccupants: 1 };
 const emptyBill = { billType: 'utilities', totalAmount: '', periodStart: '', periodEnd: '', dueDate: '' };
 const emptyRate = { amount: '', frequency: 'monthly', effectiveFrom: '' };
-
-const STATUS_STYLES = {
-  pending: 'bg-secondary-100 text-secondary-600',
-  viewed: 'bg-yellow-100 text-yellow-700',
-  paid: 'bg-green-100 text-green-700',
-};
 
 const PropertyDetail = () => {
   const { propertyId } = useParams();
@@ -42,6 +34,9 @@ const PropertyDetail = () => {
     bills,
     billSplits,
     rentRates,
+    loading,
+    error,
+    refresh,
     updateProperty,
     createTenant,
     updateTenant,
@@ -230,6 +225,26 @@ const PropertyDetail = () => {
   const [propertyForm, setPropertyForm] = useState({ name: '', address: '', description: '' });
   const [propertyError, setPropertyError] = useState('');
   const [propertySubmitting, setPropertySubmitting] = useState(false);
+
+  if (loading) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+        <p className="text-secondary-600">Loading...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+        <AlertCircle className="w-10 h-10 text-danger-600 mx-auto mb-3" />
+        <p className="text-secondary-700 mb-4">Couldn't load this property: {error}</p>
+        <button onClick={refresh} className="btn-secondary">
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   if (!property) {
     return (
@@ -436,9 +451,13 @@ const PropertyDetail = () => {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <Link to="/properties" className="inline-flex items-center text-secondary-600 hover:text-secondary-900 mb-6">
-        <ArrowLeft className="w-4 h-4 mr-1" /> Back to properties
-      </Link>
+      <nav className="flex items-center text-sm text-secondary-500 mb-6" aria-label="Breadcrumb">
+        <Link to="/dashboard" className="hover:text-secondary-900">Dashboard</Link>
+        <ChevronRight className="w-3.5 h-3.5 mx-1.5" />
+        <Link to="/properties" className="hover:text-secondary-900">Properties</Link>
+        <ChevronRight className="w-3.5 h-3.5 mx-1.5" />
+        <span className="text-secondary-900 font-medium">{property.name}</span>
+      </nav>
 
       <div className="mb-8">
         {showPropertyForm ? (
@@ -463,7 +482,7 @@ const PropertyDetail = () => {
               value={propertyForm.description}
               onChange={(e) => setPropertyForm((p) => ({ ...p, description: e.target.value }))}
             />
-            {propertyError && <p className="text-red-600 text-sm">{propertyError}</p>}
+            {propertyError && <p className="text-danger-600 text-sm">{propertyError}</p>}
             <div className="flex space-x-3">
               <button type="submit" disabled={propertySubmitting} className="btn-primary">
                 {propertySubmitting ? 'Saving...' : 'Save Changes'}
@@ -565,7 +584,7 @@ const PropertyDetail = () => {
                 />
               </div>
             </div>
-            {tenantError && <p className="text-red-600 text-sm">{tenantError}</p>}
+            {tenantError && <p className="text-danger-600 text-sm">{tenantError}</p>}
             <div className="flex space-x-3">
               <button type="submit" disabled={tenantSubmitting} className="btn-primary">
                 {tenantSubmitting ? 'Saving...' : editingTenantId ? 'Save Changes' : 'Add Tenant'}
@@ -578,7 +597,10 @@ const PropertyDetail = () => {
         )}
 
         {activeTenants.length === 0 ? (
-          <p className="text-secondary-500">No active tenants.</p>
+          <div className="card text-center py-12">
+            <Users className="w-10 h-10 text-secondary-300 mx-auto mb-3" />
+            <p className="text-secondary-600">No active tenants yet. Add one to start splitting bills.</p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {activeTenants.map((tenant) => (
@@ -596,7 +618,7 @@ const PropertyDetail = () => {
                     {currentRateFor(tenant.id) ? (
                       <p className="text-sm text-secondary-700 flex items-center">
                         <DollarSign className="w-3.5 h-3.5 mr-1 text-secondary-400" />
-                        ${(currentRateFor(tenant.id).amount_cents / 100).toFixed(2)}/{currentRateFor(tenant.id).frequency}
+                        <Money cents={currentRateFor(tenant.id).amount_cents} className="text-secondary-700" />/{currentRateFor(tenant.id).frequency}
                         <span className="text-secondary-400 ml-1">since {currentRateFor(tenant.id).effective_from}</span>
                       </p>
                     ) : (
@@ -639,7 +661,7 @@ const PropertyDetail = () => {
                             onChange={(e) => setRateForm((p) => ({ ...p, effectiveFrom: e.target.value }))}
                           />
                         </div>
-                        {rateError && <p className="text-red-600 text-xs">{rateError}</p>}
+                        {rateError && <p className="text-danger-600 text-xs">{rateError}</p>}
                         <div className="flex space-x-2">
                           <button type="submit" disabled={rateSubmitting} className="btn-primary text-xs px-3 py-1">
                             {rateSubmitting ? 'Saving...' : 'Save'}
@@ -660,10 +682,10 @@ const PropertyDetail = () => {
                         {rateHistoryFor(tenant.id).map((r) => (
                           <li key={r.id} className="text-xs text-secondary-500 flex items-center justify-between">
                             <span>
-                              ${(r.amount_cents / 100).toFixed(2)}/{r.frequency} &middot; {r.effective_from} to{' '}
+                              <Money cents={r.amount_cents} className="text-secondary-500" />/{r.frequency} &middot; {r.effective_from} to{' '}
                               {r.effective_to || 'ongoing'}
                             </span>
-                            <button onClick={() => handleDeleteRate(r.id)} className="text-secondary-300 hover:text-red-500">
+                            <button onClick={() => handleDeleteRate(r.id)} className="text-secondary-300 hover:text-danger-600">
                               <Trash2 className="w-3 h-3" />
                             </button>
                           </li>
@@ -681,7 +703,7 @@ const PropertyDetail = () => {
                   </button>
                   <button
                     onClick={() => handleDeleteTenant(tenant)}
-                    className="text-secondary-300 hover:text-red-500"
+                    className="text-secondary-300 hover:text-danger-600"
                     title="Delete or archive"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -792,7 +814,7 @@ const PropertyDetail = () => {
                 />
               </div>
             </div>
-            {billError && <p className="text-red-600 text-sm">{billError}</p>}
+            {billError && <p className="text-danger-600 text-sm">{billError}</p>}
             <div className="flex space-x-3">
               <button type="submit" disabled={billSubmitting} className="btn-primary">
                 {billSubmitting
@@ -811,7 +833,10 @@ const PropertyDetail = () => {
         )}
 
         {propertyBills.length === 0 ? (
-          <p className="text-secondary-500">No bills yet.</p>
+          <div className="card text-center py-12">
+            <Inbox className="w-10 h-10 text-secondary-300 mx-auto mb-3" />
+            <p className="text-secondary-600">No bills yet. Add one above once tenants are in place.</p>
+          </div>
         ) : (
           <div className="space-y-4">
             {propertyBills.map((bill) => {
@@ -822,7 +847,7 @@ const PropertyDetail = () => {
                   <div className="flex items-center justify-between mb-3">
                     <div>
                       <p className="font-semibold text-secondary-900 capitalize">
-                        {bill.bill_type} &mdash; ${Number(bill.total_amount).toFixed(2)}
+                        {bill.bill_type} &mdash; <Money dollars={bill.total_amount} />
                       </p>
                       <p className="text-sm text-secondary-500">
                         {bill.billing_period_start} to {bill.billing_period_end}
@@ -850,7 +875,7 @@ const PropertyDetail = () => {
                       >
                         <RefreshCw className={`w-4 h-4 ${recalculatingBillId === bill.id ? 'animate-spin' : ''}`} />
                       </button>
-                      <button onClick={() => handleDeleteBill(bill)} className="text-secondary-300 hover:text-red-500">
+                      <button onClick={() => handleDeleteBill(bill)} className="text-secondary-300 hover:text-danger-600">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -869,7 +894,7 @@ const PropertyDetail = () => {
                         </button>
                         <button
                           onClick={() => removeBillAttachment(bill.id)}
-                          className="text-secondary-300 hover:text-red-500"
+                          className="text-secondary-300 hover:text-danger-600"
                           title="Remove attachment"
                         >
                           <X className="w-4 h-4" />
@@ -889,139 +914,140 @@ const PropertyDetail = () => {
                       </label>
                     )}
                   </div>
-                  {attachmentError && <p className="text-red-600 text-xs mb-3">{attachmentError}</p>}
-                  {recalcError && <p className="text-red-600 text-xs mb-3">{recalcError}</p>}
+                  {attachmentError && <p className="text-danger-600 text-xs mb-3">{attachmentError}</p>}
+                  {recalcError && <p className="text-danger-600 text-xs mb-3">{recalcError}</p>}
 
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-secondary-500 border-b border-secondary-200">
-                        <th className="py-1">Tenant</th>
-                        <th className="py-1">Room</th>
-                        <th className="py-1">%</th>
-                        <th className="py-1 text-right">Owed</th>
-                        <th className="py-1 text-center">Status</th>
-                        <th className="py-1 text-right">Link</th>
-                        <th className="py-1 text-right">Email</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {splits.map((split) => (
-                        <React.Fragment key={split.id}>
-                        <tr className="border-b border-secondary-100 last:border-0">
-                          <td className="py-1">
-                            {split.tenant_name}
-                            {split.rate_breakdown && (
-                              <button
-                                onClick={() =>
-                                  setExpandedBreakdownSplitId((id) => (id === split.id ? null : split.id))
-                                }
-                                className="ml-1 text-secondary-300 hover:text-primary-600 align-middle"
-                                title="View rate breakdown"
-                              >
-                                {expandedBreakdownSplitId === split.id ? (
-                                  <ChevronUp className="w-3 h-3 inline" />
-                                ) : (
-                                  <ChevronDown className="w-3 h-3 inline" />
-                                )}
-                              </button>
-                            )}
-                          </td>
-                          <td className="py-1">{split.room}</td>
-                          <td className="py-1">{split.percentage}%</td>
-                          <td className="py-1 text-right font-medium tabular-nums">${Number(split.owed_amount).toFixed(2)}</td>
-                          <td className="py-1 text-center">
-                            <span
-                              className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
-                                STATUS_STYLES[split.status] || STATUS_STYLES.pending
-                              }`}
-                            >
-                              {split.status || 'pending'}
-                            </span>
-                          </td>
-                          <td className="py-1 text-right">
-                            <div className="flex items-center justify-end space-x-2">
-                              <a
-                                href={`/bill/${split.access_token}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title="View bill breakdown"
-                                className="text-secondary-400 hover:text-primary-600"
-                              >
-                                <ExternalLink className="w-4 h-4" />
-                              </a>
-                              <button
-                                title="Copy tenant link"
-                                onClick={() =>
-                                  navigator.clipboard.writeText(`${window.location.origin}/bill/${split.access_token}`)
-                                }
-                                className="text-secondary-400 hover:text-primary-600"
-                              >
-                                <Copy className="w-4 h-4" />
-                              </button>
-                              <button
-                                title="Revoke this link (rotates the token)"
-                                onClick={() => handleRevokeLink(split)}
-                                className="text-secondary-400 hover:text-red-500"
-                              >
-                                <ShieldOff className="w-4 h-4" />
-                              </button>
-                              {split.status === 'paid' ? (
+                  {/* Desktop table */}
+                  <div className="hidden sm:block">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-secondary-500 border-b border-secondary-200">
+                          <th className="py-1">Tenant</th>
+                          <th className="py-1">Room</th>
+                          <th className="py-1">%</th>
+                          <th className="py-1 text-right">Owed</th>
+                          <th className="py-1 text-center">Status</th>
+                          <th className="py-1 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {splits.map((split) => (
+                          <React.Fragment key={split.id}>
+                          <tr className="border-b border-secondary-100 last:border-0">
+                            <td className="py-1">
+                              {split.tenant_name}
+                              {split.rate_breakdown && (
                                 <button
-                                  title="Reset to pending"
-                                  onClick={() => setBillSplitStatus(split.id, 'pending')}
-                                  className="text-secondary-400 hover:text-secondary-700"
+                                  onClick={() =>
+                                    setExpandedBreakdownSplitId((id) => (id === split.id ? null : split.id))
+                                  }
+                                  className="ml-1 text-secondary-300 hover:text-primary-600 align-middle"
+                                  title="View rate breakdown"
                                 >
-                                  <RotateCcw className="w-4 h-4" />
-                                </button>
-                              ) : (
-                                <button
-                                  title="Mark as paid"
-                                  onClick={() => setBillSplitStatus(split.id, 'paid')}
-                                  className="text-secondary-400 hover:text-green-600"
-                                >
-                                  <CheckCircle2 className="w-4 h-4" />
+                                  {expandedBreakdownSplitId === split.id ? (
+                                    <ChevronUp className="w-3 h-3 inline" />
+                                  ) : (
+                                    <ChevronDown className="w-3 h-3 inline" />
+                                  )}
                                 </button>
                               )}
-                            </div>
-                          </td>
-                          <td className="py-1 text-right">
+                            </td>
+                            <td className="py-1">{split.room}</td>
+                            <td className="py-1 tabular-nums">{split.percentage}%</td>
+                            <td className="py-1 text-right">
+                              <Money dollars={split.owed_amount} className="text-secondary-900" />
+                            </td>
+                            <td className="py-1 text-center">
+                              <StatusBadge status={split.status || 'pending'} />
+                            </td>
+                            <td className="py-1 text-right">
+                              <div className="flex items-center justify-end">
+                                <SplitActions
+                                  split={split}
+                                  sendingSplitId={sendingSplitId}
+                                  onRevoke={handleRevokeLink}
+                                  onSetStatus={setBillSplitStatus}
+                                  onSendEmail={handleSendEmail}
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                          {split.rate_breakdown && expandedBreakdownSplitId === split.id && (
+                            <tr className="bg-secondary-50">
+                              <td colSpan={6} className="py-2 px-3">
+                                <ul className="text-xs text-secondary-600 space-y-1">
+                                  {split.rate_breakdown.map((seg, i) => (
+                                    <li key={i} className="flex justify-between">
+                                      <span>
+                                        {seg.from} to {seg.to} ({seg.days} day{seg.days === 1 ? '' : 's'} @{' '}
+                                        <Money cents={seg.amountCents} />/{seg.frequency})
+                                      </span>
+                                      <Money cents={seg.cents} className="font-medium" />
+                                    </li>
+                                  ))}
+                                </ul>
+                              </td>
+                            </tr>
+                          )}
+                          </React.Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile stacked cards */}
+                  <div className="sm:hidden space-y-3">
+                    {splits.map((split) => (
+                      <div key={split.id} className="border border-secondary-200 rounded-lg p-3">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <p className="font-medium text-secondary-900">{split.tenant_name}</p>
+                            <p className="text-xs text-secondary-500">
+                              {split.room} &middot; {split.percentage}%
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <Money dollars={split.owed_amount} as="p" className="text-secondary-900 block mb-1" />
+                            <StatusBadge status={split.status || 'pending'} />
+                          </div>
+                        </div>
+
+                        {split.rate_breakdown && (
+                          <>
                             <button
-                              title={split.email_sent_at ? `Sent ${new Date(split.email_sent_at).toLocaleString()} — click to resend` : 'Send bill email'}
-                              onClick={() => handleSendEmail(split)}
-                              disabled={sendingSplitId === split.id}
-                              className={`inline-flex items-center space-x-1 text-xs px-2 py-1 rounded ${
-                                split.email_sent_at
-                                  ? 'text-green-700 hover:bg-green-50'
-                                  : 'text-primary-600 hover:bg-primary-50'
-                              } disabled:opacity-50`}
+                              onClick={() => setExpandedBreakdownSplitId((id) => (id === split.id ? null : split.id))}
+                              className="text-xs text-primary-600 hover:text-primary-700 mb-2"
                             >
-                              {split.email_sent_at ? <MailCheck className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
-                              <span>{sendingSplitId === split.id ? 'Sending...' : split.email_sent_at ? 'Sent' : 'Send'}</span>
+                              {expandedBreakdownSplitId === split.id ? 'Hide' : 'View'} rate breakdown
                             </button>
-                          </td>
-                        </tr>
-                        {split.rate_breakdown && expandedBreakdownSplitId === split.id && (
-                          <tr className="bg-secondary-50">
-                            <td colSpan={7} className="py-2 px-3">
-                              <ul className="text-xs text-secondary-600 space-y-1">
+                            {expandedBreakdownSplitId === split.id && (
+                              <ul className="text-xs text-secondary-600 space-y-1 mb-2 bg-secondary-50 rounded p-2">
                                 {split.rate_breakdown.map((seg, i) => (
                                   <li key={i} className="flex justify-between">
                                     <span>
-                                      {seg.from} to {seg.to} ({seg.days} day{seg.days === 1 ? '' : 's'} @ $
-                                      {(seg.amountCents / 100).toFixed(2)}/{seg.frequency})
+                                      {seg.from} to {seg.to} ({seg.days}d @ <Money cents={seg.amountCents} />/{seg.frequency})
                                     </span>
-                                    <span className="font-medium">${(seg.cents / 100).toFixed(2)}</span>
+                                    <Money cents={seg.cents} className="font-medium" />
                                   </li>
                                 ))}
                               </ul>
-                            </td>
-                          </tr>
+                            )}
+                          </>
                         )}
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                  {emailError && <p className="text-red-600 text-xs mt-3">{emailError}</p>}
+
+                        <div className="flex items-center justify-between pt-2 border-t border-secondary-100">
+                          <SplitActions
+                            split={split}
+                            sendingSplitId={sendingSplitId}
+                            onRevoke={handleRevokeLink}
+                            onSetStatus={setBillSplitStatus}
+                            onSendEmail={handleSendEmail}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {emailError && <p className="text-danger-600 text-xs mt-3">{emailError}</p>}
                 </div>
               );
             })}

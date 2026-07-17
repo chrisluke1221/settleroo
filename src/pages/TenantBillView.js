@@ -1,7 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
+import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, Receipt, Calendar, Users, CalendarDays, Paperclip } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+import TenantShell from '../components/TenantShell';
+import Money from '../components/Money';
 
 const TenantBillView = () => {
   const { token } = useParams();
@@ -58,21 +62,29 @@ const TenantBillView = () => {
     window.open(data.url, '_blank', 'noopener,noreferrer');
   };
 
+  const noindexHelmet = (
+    <Helmet defer={false}>
+      <meta name="robots" content="noindex" />
+    </Helmet>
+  );
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <TenantShell>
+        {noindexHelmet}
         <p className="text-secondary-600">Loading...</p>
-      </div>
+      </TenantShell>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
+      <TenantShell>
+        {noindexHelmet}
         <div className="card max-w-md w-full text-center">
-          <p className="text-red-600">{error}</p>
+          <p className="text-danger-600">{error}</p>
         </div>
-      </div>
+      </TenantShell>
     );
   }
 
@@ -80,7 +92,8 @@ const TenantBillView = () => {
   const otherPersonDays = totalPersonDays - split.person_days;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-4 py-12">
+    <TenantShell propertyName={split.property_name} landlordName={split.landlord_name}>
+      {noindexHelmet}
       <div className="card max-w-lg w-full">
         <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center mb-4">
           <Receipt className="w-6 h-6 text-primary-600" />
@@ -95,11 +108,11 @@ const TenantBillView = () => {
         <div className="bg-primary-50 border border-primary-100 rounded-lg p-4 mb-6 flex items-center justify-between">
           <div>
             <p className="text-sm text-secondary-600">You owe</p>
-            <p className="text-3xl font-bold text-primary-700">${Number(split.owed_amount).toFixed(2)}</p>
+            <Money dollars={split.owed_amount} as="p" className="text-3xl text-primary-700" />
           </div>
           <div className="text-right">
             <p className="text-sm text-secondary-600">of total bill</p>
-            <p className="text-lg font-semibold text-secondary-900">${Number(split.total_amount).toFixed(2)}</p>
+            <Money dollars={split.total_amount} as="p" className="text-lg text-secondary-900" />
           </div>
         </div>
 
@@ -116,23 +129,19 @@ const TenantBillView = () => {
                     <CalendarDays className="w-4 h-4 text-secondary-400 mt-0.5" />
                     <div>
                       <p className="text-secondary-900 font-medium">
-                        ${(seg.amountCents / 100).toFixed(2)}/{seg.frequency} rate
+                        <Money cents={seg.amountCents} className="text-secondary-900" />/{seg.frequency} rate
                       </p>
                       <p className="text-secondary-500">
                         {seg.from} to {seg.to} ({seg.days} day{seg.days === 1 ? '' : 's'})
                       </p>
                     </div>
                   </div>
-                  <span className="font-medium text-secondary-900 whitespace-nowrap">
-                    ${(seg.cents / 100).toFixed(2)}
-                  </span>
+                  <Money cents={seg.cents} className="text-secondary-900 whitespace-nowrap" />
                 </div>
               ))}
               <div className="flex items-center justify-between px-4 py-3 bg-secondary-50">
                 <span className="text-secondary-700">Total rent for this period</span>
-                <span className="font-bold text-primary-700 whitespace-nowrap">
-                  ${Number(split.owed_amount).toFixed(2)}
-                </span>
+                <Money dollars={split.owed_amount} className="text-primary-700 whitespace-nowrap" />
               </div>
             </div>
           ) : (
@@ -145,7 +154,7 @@ const TenantBillView = () => {
                     <p className="text-secondary-500">{split.occupancy_start} to {split.occupancy_end}</p>
                   </div>
                 </div>
-                <span className="font-medium text-secondary-900 whitespace-nowrap">{split.occupancy_days} days</span>
+                <span className="font-medium text-secondary-900 whitespace-nowrap tabular-nums">{split.occupancy_days} days</span>
               </div>
 
               <div className="flex items-start justify-between px-4 py-3">
@@ -156,7 +165,7 @@ const TenantBillView = () => {
                     <p className="text-secondary-500">Room: {split.room}</p>
                   </div>
                 </div>
-                <span className="font-medium text-secondary-900 whitespace-nowrap">{split.number_of_occupants}</span>
+                <span className="font-medium text-secondary-900 whitespace-nowrap tabular-nums">{split.number_of_occupants}</span>
               </div>
 
               <div className="flex items-center justify-between px-4 py-3 bg-secondary-50">
@@ -164,20 +173,20 @@ const TenantBillView = () => {
                   Your person-days = {split.occupancy_days} days &times; {split.number_of_occupants} occupant
                   {split.number_of_occupants === 1 ? '' : 's'}
                 </span>
-                <span className="font-semibold text-secondary-900 whitespace-nowrap">{split.person_days}</span>
+                <span className="font-semibold text-secondary-900 whitespace-nowrap tabular-nums">{split.person_days}</span>
               </div>
 
               <div className="flex items-center justify-between px-4 py-3">
                 <span className="text-secondary-700">
                   Total person-days for this bill (all tenants combined)
                 </span>
-                <span className="font-medium text-secondary-900 whitespace-nowrap">{totalPersonDays}</span>
+                <span className="font-medium text-secondary-900 whitespace-nowrap tabular-nums">{totalPersonDays}</span>
               </div>
 
               {otherPersonDays > 0 && (
                 <div className="flex items-center justify-between px-4 py-3 text-secondary-500">
                   <span>Other tenants' person-days ({totalPersonDays} &minus; {split.person_days})</span>
-                  <span className="whitespace-nowrap">{otherPersonDays}</span>
+                  <span className="whitespace-nowrap tabular-nums">{otherPersonDays}</span>
                 </div>
               )}
 
@@ -185,14 +194,14 @@ const TenantBillView = () => {
                 <span className="text-secondary-700">
                   Your share = {split.person_days} &divide; {totalPersonDays} person-days
                 </span>
-                <span className="font-semibold text-secondary-900 whitespace-nowrap">{split.percentage}%</span>
+                <span className="font-semibold text-secondary-900 whitespace-nowrap tabular-nums">{split.percentage}%</span>
               </div>
 
               <div className="flex items-center justify-between px-4 py-3">
                 <span className="text-secondary-700">
-                  Your amount = {split.percentage}% &times; ${Number(split.total_amount).toFixed(2)}
+                  Your amount = {split.percentage}% &times; <Money dollars={split.total_amount} />
                 </span>
-                <span className="font-bold text-primary-700 whitespace-nowrap">${Number(split.owed_amount).toFixed(2)}</span>
+                <Money dollars={split.owed_amount} className="text-primary-700 whitespace-nowrap" />
               </div>
             </div>
           )}
@@ -216,28 +225,37 @@ const TenantBillView = () => {
           </button>
         )}
 
-        {split.status === 'paid' ? (
-          <div className="flex items-center justify-center space-x-2 bg-green-50 border border-green-200 rounded-lg py-3">
-            <CheckCircle className="w-5 h-5 text-green-600" />
-            <span className="text-green-700 font-medium">You've confirmed this as paid</span>
-          </div>
-        ) : (
-          <button
-            onClick={handleConfirmPaid}
-            disabled={confirming}
-            className="btn-primary w-full flex items-center justify-center space-x-2"
-          >
-            <CheckCircle className="w-4 h-4" />
-            <span>{confirming ? 'Confirming...' : "I've Paid This"}</span>
-          </button>
-        )}
+        <AnimatePresence mode="wait">
+          {split.status === 'paid' ? (
+            <motion.div
+              key="paid"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.25 }}
+              className="flex items-center justify-center space-x-2 bg-success-50 border border-success-100 rounded-lg py-3"
+            >
+              <CheckCircle className="w-5 h-5 text-success-600" />
+              <span className="text-success-700 font-medium">You've confirmed this as paid</span>
+            </motion.div>
+          ) : (
+            <motion.button
+              key="unpaid"
+              onClick={handleConfirmPaid}
+              disabled={confirming}
+              className="btn-primary w-full flex items-center justify-center space-x-2"
+            >
+              <CheckCircle className="w-4 h-4" />
+              <span>{confirming ? 'Confirming...' : "I've Paid This"}</span>
+            </motion.button>
+          )}
+        </AnimatePresence>
 
         <p className="text-xs text-secondary-400 mt-4 text-center">
           This confirms you've settled the amount directly with your landlord (e.g. bank transfer). It does not
           process a payment.
         </p>
       </div>
-    </div>
+    </TenantShell>
   );
 };
 

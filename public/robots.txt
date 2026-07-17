@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /properties
+Disallow: /dashboard
+Disallow: /bill/
+
+Sitemap: https://roomietab.netlify.app/sitemap.xml

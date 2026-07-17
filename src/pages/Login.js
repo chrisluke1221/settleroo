@@ -33,11 +33,11 @@ const Login = () => {
           setInfo('Account created. Check your email to confirm, then sign in.');
           setMode('login');
         } else {
-          navigate('/properties');
+          navigate('/dashboard');
         }
       } else {
         await login(formData.email.trim(), formData.password);
-        navigate('/properties');
+        navigate('/dashboard');
       }
     } catch (err) {
       console.error('Auth error:', err);
@@ -54,7 +54,7 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-indigo-100 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-secondary-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -63,7 +63,7 @@ const Login = () => {
       >
         <div className="card">
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-r from-primary-500 to-primary-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-primary-600 rounded-xl flex items-center justify-center mx-auto mb-4">
               <User className="w-8 h-8 text-white" />
             </div>
             <h2 className="text-3xl font-bold text-secondary-900 mb-2">
@@ -131,14 +131,14 @@ const Login = () => {
             </div>
 
             {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-red-600 text-sm">{error}</p>
+              <div className="p-3 bg-danger-50 border border-danger-100 rounded-lg">
+                <p className="text-danger-600 text-sm">{error}</p>
               </div>
             )}
 
             {info && (
-              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                <p className="text-green-700 text-sm">{info}</p>
+              <div className="p-3 bg-success-50 border border-success-100 rounded-lg">
+                <p className="text-success-700 text-sm">{info}</p>
               </div>
             )}
 
