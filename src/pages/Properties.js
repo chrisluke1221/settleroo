@@ -1,19 +1,26 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Plus, Home, MapPin, Users, Trash2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperties } from '../contexts/PropertyContext';
+import ConfirmModal from '../components/ConfirmModal';
 
 const Properties = () => {
   const { user } = useAuth();
-  const { properties, tenants, loading, error: loadError, refresh, createProperty, deleteProperty } = useProperties();
+  const { properties, tenants, loading, error: loadError, refresh, createProperty, deleteProperty, loadSampleProperty } = useProperties();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [loadingSample, setLoadingSample] = useState(false);
 
-  const [showForm, setShowForm] = useState(false);
+  // Dashboard's empty-state CTA links here with ?new=1 so "Add a property"
+  // opens the form directly instead of landing on an empty list that still
+  // needs its own second click.
+  const [showForm, setShowForm] = useState(searchParams.get('new') === '1');
   const [formData, setFormData] = useState({ name: '', address: '', description: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -36,10 +43,15 @@ const Properties = () => {
     }
   };
 
-  const handleDelete = async (e, propertyId) => {
+  const handleDeleteClick = (e, propertyId) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!window.confirm('Delete this property and all its tenants/bills?')) return;
+    setConfirmDeleteId(propertyId);
+  };
+
+  const handleConfirmDelete = async () => {
+    const propertyId = confirmDeleteId;
+    setConfirmDeleteId(null);
     try {
       await deleteProperty(propertyId);
     } catch (err) {
@@ -47,10 +59,32 @@ const Properties = () => {
     }
   };
 
+  const propertyToDelete = properties.find((p) => p.id === confirmDeleteId);
+
+  const handleLoadSample = async () => {
+    setLoadingSample(true);
+    try {
+      const property = await loadSampleProperty();
+      navigate(`/properties/${property.id}`);
+    } catch (err) {
+      console.error('Failed to load sample property:', err);
+    } finally {
+      setLoadingSample(false);
+    }
+  };
+
   const tenantCountFor = (propertyId) => tenants.filter((t) => t.property_id === propertyId).length;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <ConfirmModal
+        open={!!confirmDeleteId}
+        title={`Delete ${propertyToDelete?.name || 'this property'}?`}
+        message={`This permanently deletes ${propertyToDelete?.name || 'this property'} and all of its tenants and bills. This cannot be undone.`}
+        confirmLabel="Delete property"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-secondary-900">Your Properties</h1>
@@ -96,6 +130,7 @@ const Properties = () => {
               <input
                 type="text"
                 className="input-field"
+                maxLength={500}
                 value={formData.description}
                 onChange={(e) => setFormData((p) => ({ ...p, description: e.target.value }))}
               />
@@ -126,7 +161,10 @@ const Properties = () => {
       ) : properties.length === 0 ? (
         <div className="card text-center py-16">
           <Home className="w-12 h-12 text-secondary-300 mx-auto mb-4" />
-          <p className="text-secondary-600">No properties yet. Add your first one to get started.</p>
+          <p className="text-secondary-600 mb-4">No properties yet. Add your first one to get started.</p>
+          <button onClick={handleLoadSample} disabled={loadingSample} className="btn-secondary inline-flex disabled:opacity-50">
+            {loadingSample ? 'Loading...' : 'Or see it with sample data'}
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -137,7 +175,7 @@ const Properties = () => {
               className="card hover:shadow-lg transition-shadow duration-300 relative group"
             >
               <button
-                onClick={(e) => handleDelete(e, property.id)}
+                onClick={(e) => handleDeleteClick(e, property.id)}
                 className="absolute top-4 right-4 text-secondary-300 hover:text-danger-600 opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 <Trash2 className="w-4 h-4" />

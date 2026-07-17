@@ -21,6 +21,7 @@ export const PropertyProvider = ({ children }) => {
   const [bills, setBills] = useState([]);
   const [billSplits, setBillSplits] = useState([]);
   const [rentRates, setRentRates] = useState([]);
+  const [landlordSettings, setLandlordSettings] = useState({ notify_overdue: true });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -31,6 +32,7 @@ export const PropertyProvider = ({ children }) => {
       setBills([]);
       setBillSplits([]);
       setRentRates([]);
+      setLandlordSettings({ notify_overdue: true });
       return;
     }
     setLoading(true);
@@ -42,12 +44,14 @@ export const PropertyProvider = ({ children }) => {
         { data: billsData, error: billsError },
         { data: billSplitsData, error: billSplitsError },
         { data: rentRatesData, error: rentRatesError },
+        { data: settingsData },
       ] = await Promise.all([
         supabase.from('properties').select('*').order('created_at', { ascending: false }),
         supabase.from('tenants').select('*').order('created_at', { ascending: false }),
         supabase.from('bills').select('*').order('created_at', { ascending: false }),
         supabase.from('bill_splits').select('*'),
         supabase.from('rent_rates').select('*').order('effective_from', { ascending: true }),
+        supabase.from('landlord_settings').select('*').maybeSingle(),
       ]);
 
       if (propertiesError) throw propertiesError;
@@ -61,6 +65,9 @@ export const PropertyProvider = ({ children }) => {
       setBills(billsData ?? []);
       setBillSplits(billSplitsData ?? []);
       setRentRates(rentRatesData ?? []);
+      // No row yet just means the landlord never changed the default —
+      // notify_overdue defaults to on until they explicitly toggle it.
+      setLandlordSettings(settingsData ?? { notify_overdue: true });
     } catch (err) {
       console.error('Failed to load property data:', err);
       setError(err.message || 'Failed to load your data');
@@ -68,6 +75,17 @@ export const PropertyProvider = ({ children }) => {
       setLoading(false);
     }
   }, [user]);
+
+  const setNotifyOverdue = async (enabled) => {
+    const { data, error } = await supabase
+      .from('landlord_settings')
+      .upsert({ landlord_id: user.id, notify_overdue: enabled }, { onConflict: 'landlord_id' })
+      .select()
+      .single();
+    if (error) throw error;
+    setLandlordSettings(data);
+    return data;
+  };
 
   useEffect(() => {
     refresh();
@@ -103,7 +121,33 @@ export const PropertyProvider = ({ children }) => {
     setTenants((prev) => prev.filter((t) => t.property_id !== propertyId));
   };
 
-  const createTenant = async ({ propertyId, name, email, phone, room, moveInDate, moveOutDate, numberOfOccupants }) => {
+  // Ground truth for "who's on this property right now" at a point in time,
+  // used instead of the `tenants` closure wherever a roster-changing action
+  // needs the up-to-date list within the same function call (see the comment
+  // in createTenant below for why the closure can't be trusted there).
+  const fetchTenantsForProperty = async (propertyId, fallbackRow) => {
+    const { data, error } = await supabase.from('tenants').select('*').eq('property_id', propertyId);
+    if (error || !data) return fallbackRow ? [fallbackRow] : [];
+    return data;
+  };
+
+  // rentAmountCents/rentFrequency are optional — set on the tenant-create
+  // form so a landlord does rent + tenant data entry in one pass. Inserted
+  // directly (not via addRentRate) since this is always a tenant's first
+  // rate: no overlap/auto-close logic needed, effective_from is just the
+  // move-in date.
+  const createTenant = async ({
+    propertyId,
+    name,
+    email,
+    phone,
+    room,
+    moveInDate,
+    moveOutDate,
+    numberOfOccupants,
+    rentAmountCents,
+    rentFrequency,
+  }) => {
     const { data, error } = await supabase
       .from('tenants')
       .insert({
@@ -120,7 +164,31 @@ export const PropertyProvider = ({ children }) => {
       .select()
       .single();
     if (error) throw error;
+
+    if (rentAmountCents) {
+      const { data: rate, error: rateError } = await supabase
+        .from('rent_rates')
+        .insert({
+          tenant_id: data.id,
+          landlord_id: user.id,
+          amount_cents: rentAmountCents,
+          frequency: rentFrequency || 'monthly',
+          effective_from: moveInDate,
+        })
+        .select()
+        .single();
+      if (rateError) throw rateError;
+      setRentRates((prev) => [...prev, rate]);
+    }
+
     setTenants((prev) => [data, ...prev]);
+    // Fetch the roster fresh rather than trusting this closure's `tenants` —
+    // callers that create several tenants in one function call (loadSampleProperty)
+    // would otherwise have each call race the previous one's still-pending
+    // setTenants, since a long-running async function keeps its own frozen
+    // reference to `tenants` for its whole execution regardless of re-renders.
+    const currentRoster = await fetchTenantsForProperty(propertyId, data);
+    await recalcUnlockedBillsForProperty(propertyId, currentRoster);
     return data;
   };
 
@@ -133,6 +201,8 @@ export const PropertyProvider = ({ children }) => {
       .single();
     if (error) throw error;
     setTenants((prev) => prev.map((t) => (t.id === tenantId ? data : t)));
+    const currentRoster = await fetchTenantsForProperty(data.property_id, data);
+    await recalcUnlockedBillsForProperty(data.property_id, currentRoster);
     return data;
   };
 
@@ -145,16 +215,24 @@ export const PropertyProvider = ({ children }) => {
     if (hasHistory) {
       return updateTenant(tenantId, { status: 'former' });
     }
+    const tenant = tenants.find((t) => t.id === tenantId);
     const { error } = await supabase.from('tenants').delete().eq('id', tenantId);
     if (error) throw error;
     setTenants((prev) => prev.filter((t) => t.id !== tenantId));
+    if (tenant) {
+      const currentRoster = (await fetchTenantsForProperty(tenant.property_id)).filter((t) => t.id !== tenantId);
+      await recalcUnlockedBillsForProperty(tenant.property_id, currentRoster);
+    }
     return null;
   };
 
   const reactivateTenant = async (tenantId) => updateTenant(tenantId, { status: 'active' });
 
-  const createBillWithSplits = async ({ propertyId, billType, totalAmount, periodStart, periodEnd, dueDate }) => {
-    const propertyTenants = tenants.filter((t) => t.property_id === propertyId && t.status !== 'former');
+  // tenantList override exists for callers (like loadSampleProperty) that
+  // create tenants and immediately bill them in the same function — the
+  // context's `tenants` closure won't include those until the next render.
+  const createBillWithSplits = async ({ propertyId, billType, totalAmount, periodStart, periodEnd, dueDate, tenantList = tenants }) => {
+    const propertyTenants = tenantList.filter((t) => t.property_id === propertyId && t.status !== 'former');
     if (propertyTenants.length === 0) {
       throw new Error('This property has no active tenants to split the bill across.');
     }
@@ -192,13 +270,16 @@ export const PropertyProvider = ({ children }) => {
     return { bill, splits: insertedSplits };
   };
 
-  // Shared by recalculateBill and updateBill: recompute a bill's splits
-  // against its current field values and the current active tenant list,
-  // updating matching tenant rows in place (keeps id/access_token/status)
-  // and only inserting/deleting for tenants that actually changed.
-  const applyRecomputedSplits = async (bill) => {
+  // Shared by recalculateBill, updateBill, and the roster-change auto-recalc:
+  // recompute a bill's splits against its current field values and the
+  // current active tenant list, updating matching tenant rows in place
+  // (keeps id/access_token/status) and only inserting/deleting for tenants
+  // that actually changed. tenantList defaults to context state, but callers
+  // reacting to a just-applied tenant change pass the updated array directly
+  // — setTenants() doesn't land in this closure's `tenants` until next render.
+  const applyRecomputedSplits = async (bill, tenantList = tenants) => {
     const existingSplits = billSplits.filter((s) => s.bill_id === bill.id);
-    const propertyTenants = tenants.filter((t) => t.property_id === bill.property_id && t.status !== 'former');
+    const propertyTenants = tenantList.filter((t) => t.property_id === bill.property_id && t.status !== 'former');
     const newSplits = computeSplits(
       propertyTenants,
       bill.billing_period_start,
@@ -247,6 +328,57 @@ export const PropertyProvider = ({ children }) => {
     const newBillSplitRows = [...updatedRows, ...insertedRows];
     setBillSplits((prev) => [...prev.filter((s) => s.bill_id !== bill.id), ...newBillSplitRows]);
     return newBillSplitRows;
+  };
+
+  // Called after any tenant roster change (add/edit/archive/delete). A
+  // utility bill that's still an unsent draft (locked_at null) recomputes
+  // live — this is what fixes "added tenant 2, bill still shows 100% for
+  // tenant 1". A locked (already-sent) bill never auto-recomputes; instead
+  // it's flagged needs_reissue so the landlord sees a banner and reissues
+  // explicitly. A bill with any paid split is never touched either way.
+  // Rent bills aren't in scope — rent has no shared-split roster to react to.
+  const recalcUnlockedBillsForProperty = async (propertyId, tenantList = tenants) => {
+    const propertyBills = bills.filter((b) => b.property_id === propertyId && b.bill_type !== 'rent');
+    for (const bill of propertyBills) {
+      const splits = billSplits.filter((s) => s.bill_id === bill.id);
+      if (splits.some((s) => s.status === 'paid')) continue;
+
+      if (bill.locked_at) {
+        if (!bill.needs_reissue) {
+          const { data, error } = await supabase
+            .from('bills')
+            .update({ needs_reissue: true })
+            .eq('id', bill.id)
+            .select()
+            .single();
+          if (!error) setBills((prev) => prev.map((b) => (b.id === bill.id ? data : b)));
+        }
+      } else {
+        await applyRecomputedSplits(bill, tenantList);
+      }
+    }
+  };
+
+  // Explicit landlord action once a locked bill's roster has drifted
+  // (needs_reissue) — recomputes against the current roster and clears the
+  // flag. Same paid-split guard as recalculateBill/updateBill.
+  const reissueBill = async (billId) => {
+    const bill = bills.find((b) => b.id === billId);
+    if (!bill) throw new Error('Bill not found');
+    const existingSplits = billSplits.filter((s) => s.bill_id === billId);
+    if (existingSplits.some((s) => s.status === 'paid')) {
+      throw new Error('This bill has a payment already confirmed — it can no longer be reissued.');
+    }
+    await applyRecomputedSplits(bill);
+    const { data, error } = await supabase
+      .from('bills')
+      .update({ needs_reissue: false })
+      .eq('id', billId)
+      .select()
+      .single();
+    if (error) throw error;
+    setBills((prev) => prev.map((b) => (b.id === billId ? data : b)));
+    return data;
   };
 
   // Explicit, landlord-triggered recompute — never automatic. Refuses to
@@ -435,6 +567,59 @@ export const PropertyProvider = ({ children }) => {
     return { bill, splits: insertedSplits };
   };
 
+  // The 60-second aha: a fully-formed property with two tenants (staggered
+  // move-in dates, so the split visibly isn't 50/50) and one utility bill
+  // already split — so a new landlord sees the breakdown card before typing
+  // anything. Uses last month as the bill period so it's always plausible
+  // regardless of when this runs.
+  const loadSampleProperty = async () => {
+    const now = new Date();
+    const periodEndDate = new Date(now.getFullYear(), now.getMonth(), 0);
+    const periodStartDate = new Date(periodEndDate.getFullYear(), periodEndDate.getMonth(), 1);
+    const midDate = new Date(periodStartDate);
+    midDate.setDate(15);
+    const fmt = (d) => d.toISOString().slice(0, 10);
+
+    const property = await createProperty({
+      name: 'Sample Share House',
+      address: '12 Example Street, Melbourne',
+      description: 'A sample property showing how RoomieTab splits a bill fairly — delete any time.',
+    });
+
+    const alice = await createTenant({
+      propertyId: property.id,
+      name: 'Alice (sample)',
+      email: '',
+      phone: '',
+      room: 'Room 1',
+      moveInDate: fmt(periodStartDate),
+      moveOutDate: '',
+      numberOfOccupants: 1,
+    });
+    const bob = await createTenant({
+      propertyId: property.id,
+      name: 'Bob (sample)',
+      email: '',
+      phone: '',
+      room: 'Room 2',
+      moveInDate: fmt(midDate),
+      moveOutDate: '',
+      numberOfOccupants: 1,
+    });
+
+    await createBillWithSplits({
+      propertyId: property.id,
+      billType: 'electricity',
+      totalAmount: 120,
+      periodStart: fmt(periodStartDate),
+      periodEnd: fmt(periodEndDate),
+      dueDate: null,
+      tenantList: [alice, bob],
+    });
+
+    return property;
+  };
+
   const deleteBill = async (billId) => {
     const bill = bills.find((b) => b.id === billId);
     if (bill?.attachment_path) {
@@ -473,6 +658,21 @@ export const PropertyProvider = ({ children }) => {
     setBillSplits((prev) =>
       prev.map((s) => (s.id === splitId ? { ...s, email_sent_at: new Date().toISOString() } : s))
     );
+
+    // First send locks a utility bill's split — from here, roster changes
+    // flag needs_reissue instead of silently rewriting a number the tenant
+    // may already be looking at.
+    const split = billSplits.find((s) => s.id === splitId);
+    const bill = split && bills.find((b) => b.id === split.bill_id);
+    if (bill && bill.bill_type !== 'rent' && !bill.locked_at) {
+      const { data: lockedBill, error: lockError } = await supabase
+        .from('bills')
+        .update({ locked_at: new Date().toISOString() })
+        .eq('id', bill.id)
+        .select()
+        .single();
+      if (!lockError) setBills((prev) => prev.map((b) => (b.id === bill.id ? lockedBill : b)));
+    }
     return data;
   };
 
@@ -540,6 +740,8 @@ export const PropertyProvider = ({ children }) => {
     bills,
     billSplits,
     rentRates,
+    landlordSettings,
+    setNotifyOverdue,
     loading,
     error,
     refresh,
@@ -552,6 +754,7 @@ export const PropertyProvider = ({ children }) => {
     createProperty,
     updateProperty,
     deleteProperty,
+    loadSampleProperty,
     createTenant,
     updateTenant,
     deleteTenant,
@@ -559,6 +762,7 @@ export const PropertyProvider = ({ children }) => {
     createBillWithSplits,
     updateBill,
     recalculateBill,
+    reissueBill,
     deleteBill,
     addRentRate,
     deleteRentRate,

@@ -1,15 +1,44 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { AlertCircle, CalendarClock, Inbox, Wallet } from 'lucide-react';
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { AlertCircle, CalendarClock, Inbox, Wallet, Bell } from 'lucide-react';
 import { useProperties } from '../contexts/PropertyContext';
-import { statusStyle, statusLabel } from '../lib/paymentStatus';
+import { statusStyle, statusLabel, effectiveStatus } from '../lib/paymentStatus';
 import Money from '../components/Money';
 
 // "Inbox zero for property money" — a returning landlord sees what needs
 // attention, not a marketing hero. Everything here is derived from data
 // PropertyContext already loads account-wide; no new Supabase calls.
 const Dashboard = () => {
-  const { properties, bills, billSplits, loading, error, refresh } = useProperties();
+  const { properties, bills, billSplits, landlordSettings, setNotifyOverdue, loadSampleProperty, loading, error, refresh } = useProperties();
+  const [savingNotify, setSavingNotify] = useState(false);
+  const [loadingSample, setLoadingSample] = useState(false);
+  const [sampleError, setSampleError] = useState('');
+  const navigate = useNavigate();
+
+  const handleToggleNotify = async () => {
+    setSavingNotify(true);
+    try {
+      await setNotifyOverdue(!landlordSettings.notify_overdue);
+    } catch (err) {
+      console.error('Failed to update reminder setting:', err);
+    } finally {
+      setSavingNotify(false);
+    }
+  };
+
+  const handleLoadSample = async () => {
+    setLoadingSample(true);
+    setSampleError('');
+    try {
+      const property = await loadSampleProperty();
+      navigate(`/properties/${property.id}`);
+    } catch (err) {
+      console.error('Failed to load sample property:', err);
+      setSampleError(err.message || 'Failed to load sample property');
+    } finally {
+      setLoadingSample(false);
+    }
+  };
 
   const propertyById = (propertyId) => properties.find((p) => p.id === propertyId);
 
@@ -40,6 +69,26 @@ const Dashboard = () => {
     })
     .slice(0, 20);
 
+  // "Who owes me what in total" — grouped by tenant across every bill
+  // (rent + utilities), not just the one in front of you.
+  const balanceByTenant = new Map();
+  outstandingWithBill.forEach(({ split, bill }) => {
+    const key = split.tenant_id;
+    const cents = Math.round(Number(split.owed_amount) * 100);
+    const existing = balanceByTenant.get(key);
+    if (existing) {
+      existing.cents += cents;
+    } else {
+      balanceByTenant.set(key, {
+        tenantName: split.tenant_name,
+        propertyId: bill.property_id,
+        propertyName: propertyById(bill.property_id)?.name,
+        cents,
+      });
+    }
+  });
+  const tenantBalances = Array.from(balanceByTenant.values()).sort((a, b) => b.cents - a.cents);
+
   if (loading) {
     return (
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -69,9 +118,15 @@ const Dashboard = () => {
           <Inbox className="w-12 h-12 text-secondary-300 mx-auto mb-4" />
           <h1 className="text-xl font-semibold text-secondary-900 mb-2">Add your first property to get started</h1>
           <p className="text-secondary-600 mb-6">Once you add a property and tenants, bills you issue will show up here.</p>
-          <Link to="/properties" className="btn-primary inline-flex">
-            Add a property
-          </Link>
+          <div className="flex items-center justify-center space-x-3">
+            <Link to="/properties?new=1" className="btn-primary inline-flex">
+              Add a property
+            </Link>
+            <button onClick={handleLoadSample} disabled={loadingSample} className="btn-secondary inline-flex disabled:opacity-50">
+              {loadingSample ? 'Loading...' : 'See it with sample data'}
+            </button>
+          </div>
+          {sampleError && <p className="text-danger-600 text-sm mt-3">{sampleError}</p>}
         </div>
       </div>
     );
@@ -79,7 +134,18 @@ const Dashboard = () => {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <h1 className="text-3xl font-bold text-secondary-900 mb-8">Work queue</h1>
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="text-3xl font-bold text-secondary-900">Work queue</h1>
+        <button
+          onClick={handleToggleNotify}
+          disabled={savingNotify}
+          className="flex items-center space-x-2 text-sm text-secondary-500 hover:text-secondary-900 disabled:opacity-50"
+          title="Email tenants automatically when their bill goes overdue"
+        >
+          <Bell className="w-4 h-4" />
+          <span>Overdue reminders: {landlordSettings.notify_overdue ? 'On' : 'Off'}</span>
+        </button>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <div className="card flex items-center space-x-3">
@@ -111,6 +177,26 @@ const Dashboard = () => {
         </div>
       </div>
 
+      {tenantBalances.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-sm font-semibold text-secondary-500 uppercase tracking-wide mb-3">Who owes you</h2>
+          <div className="card divide-y divide-secondary-100 p-0 overflow-hidden">
+            {tenantBalances.slice(0, 10).map((row) => (
+              <Link
+                key={`${row.propertyId}-${row.tenantName}`}
+                to={`/properties/${row.propertyId}`}
+                className="flex items-center justify-between px-6 py-3 hover:bg-secondary-50 transition-colors duration-150"
+              >
+                <p className="font-medium text-secondary-900">
+                  {row.tenantName} <span className="text-secondary-400 font-normal">&middot; {row.propertyName}</span>
+                </p>
+                <Money cents={row.cents} className="text-secondary-900" />
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       {workQueue.length === 0 ? (
         <div className="card text-center py-16">
           <Inbox className="w-12 h-12 text-secondary-300 mx-auto mb-4" />
@@ -137,8 +223,8 @@ const Dashboard = () => {
                 </div>
                 <div className="flex items-center space-x-3">
                   <Money dollars={split.owed_amount} className="text-secondary-900" />
-                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${statusStyle(split.status)}`}>
-                    {statusLabel(split.status)}
+                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${statusStyle(effectiveStatus(split, bill))}`}>
+                    {statusLabel(effectiveStatus(split, bill))}
                   </span>
                 </div>
               </Link>

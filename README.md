@@ -53,4 +53,4 @@ Auto-deploys to Netlify (`roomietab.netlify.app`) from `main`.
 
 ## Support
 
-- **Email**: support@roomietab.com
+- **Email**: chrisluke1221@gmail.com

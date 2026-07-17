@@ -4,7 +4,6 @@ import {
   ChevronRight,
   Plus,
   Trash2,
-  Receipt,
   Users,
   Pencil,
   Paperclip,
@@ -12,19 +11,44 @@ import {
   Archive,
   RefreshCw,
   DollarSign,
+  Zap,
   ChevronDown,
   ChevronUp,
   Inbox,
   AlertCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import { useProperties } from '../contexts/PropertyContext';
 import Money from '../components/Money';
 import StatusBadge from '../components/StatusBadge';
 import SplitActions from '../components/SplitActions';
+import ConfirmModal from '../components/ConfirmModal';
+import { effectiveStatus } from '../lib/paymentStatus';
 
-const emptyTenant = { name: '', email: '', phone: '', room: '', moveInDate: '', moveOutDate: '', numberOfOccupants: 1 };
-const emptyBill = { billType: 'utilities', totalAmount: '', periodStart: '', periodEnd: '', dueDate: '' };
+const emptyTenant = {
+  name: '',
+  email: '',
+  phone: '',
+  room: '',
+  moveInDate: '',
+  moveOutDate: '',
+  numberOfOccupants: 1,
+  rentAmount: '',
+  rentFrequency: 'monthly',
+};
+const emptyBill = { billType: 'electricity', totalAmount: '', periodStart: '', periodEnd: '', dueDate: '' };
+const emptyRentBill = { periodStart: '', periodEnd: '', dueDate: '' };
 const emptyRate = { amount: '', frequency: 'monthly', effectiveFrom: '' };
+
+const UTILITY_TYPES = [
+  { value: 'electricity', label: 'Electricity' },
+  { value: 'gas', label: 'Gas' },
+  { value: 'water', label: 'Water' },
+  { value: 'internet', label: 'Internet' },
+  { value: 'other', label: 'Other utility' },
+];
+
+const today = () => new Date().toISOString().slice(0, 10);
 
 const PropertyDetail = () => {
   const { propertyId } = useParams();
@@ -45,6 +69,7 @@ const PropertyDetail = () => {
     createBillWithSplits,
     updateBill,
     recalculateBill,
+    reissueBill,
     deleteBill,
     setBillSplitStatus,
     sendBillEmail,
@@ -70,6 +95,7 @@ const PropertyDetail = () => {
   const [openingAttachmentBillId, setOpeningAttachmentBillId] = useState(null);
   const [recalculatingBillId, setRecalculatingBillId] = useState(null);
   const [recalcError, setRecalcError] = useState('');
+  const [confirmState, setConfirmState] = useState(null);
 
   const ALLOWED_ATTACHMENT_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
   const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB
@@ -127,7 +153,34 @@ const PropertyDetail = () => {
     }
   };
 
+  const handleReissue = async (billId) => {
+    setRecalcError('');
+    setRecalculatingBillId(billId);
+    try {
+      await reissueBill(billId);
+    } catch (err) {
+      console.error('Failed to reissue bill:', err);
+      setRecalcError(err.message || 'Failed to reissue bill');
+    } finally {
+      setRecalculatingBillId(null);
+    }
+  };
+
   const tenantById = (tenantId) => tenants.find((t) => t.id === tenantId);
+
+  // The "who owes me what in total" payoff — sums everything unpaid for a
+  // tenant across both rent and utility bills, not just the one in front of you.
+  const balanceFor = (tenantId) =>
+    billSplits
+      .filter((s) => s.tenant_id === tenantId && s.status !== 'paid')
+      .reduce((sum, s) => sum + Math.round(Number(s.owed_amount) * 100), 0);
+
+  // Most recent split for this tenant — the "show them the math" moment,
+  // surfaced as a first-class action instead of buried in a bill's action row.
+  const latestSplitFor = (tenantId) =>
+    billSplits
+      .filter((s) => s.tenant_id === tenantId)
+      .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))[0];
 
   const currentRateFor = (tenantId) =>
     rentRates.filter((r) => r.tenant_id === tenantId).find((r) => !r.effective_to);
@@ -166,14 +219,21 @@ const PropertyDetail = () => {
     }
   };
 
-  const handleDeleteRate = async (rateId) => {
-    if (!window.confirm('Delete this rent rate?')) return;
-    try {
-      await deleteRentRate(rateId);
-    } catch (err) {
-      console.error('Failed to delete rent rate:', err);
-      window.alert(err.message || 'Failed to delete rent rate');
-    }
+  const handleDeleteRate = (rateId) => {
+    setConfirmState({
+      title: 'Delete this rent rate?',
+      message: 'This removes the rate from the tenant\'s history. This cannot be undone.',
+      confirmLabel: 'Delete rate',
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await deleteRentRate(rateId);
+        } catch (err) {
+          console.error('Failed to delete rent rate:', err);
+          window.alert(err.message || 'Failed to delete rent rate');
+        }
+      },
+    });
   };
 
   const handleRevokeLink = async (split) => {
@@ -208,6 +268,8 @@ const PropertyDetail = () => {
   const activeTenants = allPropertyTenants.filter((t) => t.status !== 'former');
   const formerTenants = allPropertyTenants.filter((t) => t.status === 'former');
   const propertyBills = bills.filter((b) => b.property_id === propertyId);
+  const rentBills = propertyBills.filter((b) => b.bill_type === 'rent');
+  const utilityBills = propertyBills.filter((b) => b.bill_type !== 'rent');
 
   const [showTenantForm, setShowTenantForm] = useState(false);
   const [tenantForm, setTenantForm] = useState(emptyTenant);
@@ -220,6 +282,11 @@ const PropertyDetail = () => {
   const [billError, setBillError] = useState('');
   const [billSubmitting, setBillSubmitting] = useState(false);
   const [editingBillId, setEditingBillId] = useState(null);
+
+  const [showRentBillForm, setShowRentBillForm] = useState(false);
+  const [rentBillForm, setRentBillForm] = useState(emptyRentBill);
+  const [rentBillError, setRentBillError] = useState('');
+  const [rentBillSubmitting, setRentBillSubmitting] = useState(false);
 
   const [showPropertyForm, setShowPropertyForm] = useState(false);
   const [propertyForm, setPropertyForm] = useState({ name: '', address: '', description: '' });
@@ -273,6 +340,11 @@ const PropertyDetail = () => {
       setTenantError('That email address doesn\'t look valid');
       return;
     }
+    const rentAmount = parseFloat(tenantForm.rentAmount);
+    if (tenantForm.rentAmount && (!rentAmount || rentAmount <= 0)) {
+      setTenantError('Rent must be a positive amount, or left blank to set later');
+      return;
+    }
     setTenantSubmitting(true);
     setTenantError('');
     try {
@@ -287,7 +359,11 @@ const PropertyDetail = () => {
           number_of_occupants: tenantForm.numberOfOccupants,
         });
       } else {
-        await createTenant({ propertyId, ...tenantForm });
+        await createTenant({
+          propertyId,
+          ...tenantForm,
+          rentAmountCents: rentAmount ? Math.round(rentAmount * 100) : null,
+        });
       }
       setTenantForm(emptyTenant);
       setEditingTenantId(null);
@@ -309,6 +385,8 @@ const PropertyDetail = () => {
       moveInDate: tenant.move_in_date,
       moveOutDate: tenant.move_out_date || '',
       numberOfOccupants: tenant.number_of_occupants,
+      rentAmount: '',
+      rentFrequency: 'monthly',
     });
     setEditingTenantId(tenant.id);
     setTenantError('');
@@ -322,29 +400,41 @@ const PropertyDetail = () => {
     setTenantError('');
   };
 
-  const handleDeleteTenant = async (tenant) => {
+  const handleDeleteTenant = (tenant) => {
     const hasHistory = billSplits.some((s) => s.tenant_id === tenant.id);
-    const message = hasHistory
-      ? `${tenant.name} has bill history, so they'll be archived (marked former) instead of deleted, to keep past bills intact. Continue?`
-      : `Delete ${tenant.name}? This cannot be undone.`;
-    if (!window.confirm(message)) return;
-    try {
-      await deleteTenant(tenant.id);
-    } catch (err) {
-      console.error('Failed to remove tenant:', err);
-    }
+    setConfirmState({
+      title: hasHistory ? `Archive ${tenant.name}?` : `Delete ${tenant.name}?`,
+      message: hasHistory
+        ? `${tenant.name} has bill history, so they'll be archived (marked former) instead of deleted, to keep past bills intact.`
+        : `${tenant.name} has no bill history yet, so this permanently deletes their record. This cannot be undone.`,
+      confirmLabel: hasHistory ? 'Archive' : 'Delete',
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await deleteTenant(tenant.id);
+        } catch (err) {
+          console.error('Failed to remove tenant:', err);
+        }
+      },
+    });
   };
 
-  const handleDeleteBill = async (bill) => {
-    if (!window.confirm(`Delete this ${bill.bill_type} bill and all its tenant splits? This cannot be undone.`)) return;
-    try {
-      await deleteBill(bill.id);
-    } catch (err) {
-      console.error('Failed to delete bill:', err);
-    }
+  const handleDeleteBill = (bill) => {
+    const splitCount = billSplits.filter((s) => s.bill_id === bill.id).length;
+    setConfirmState({
+      title: `Delete this ${bill.bill_type} bill?`,
+      message: `This deletes the bill and ${splitCount} tenant split${splitCount === 1 ? '' : 's'} that go with it. This cannot be undone.`,
+      confirmLabel: 'Delete bill',
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await deleteBill(bill.id);
+        } catch (err) {
+          console.error('Failed to delete bill:', err);
+        }
+      },
+    });
   };
-
-  const isRentBill = billForm.billType === 'rent' && !editingBillId;
 
   const handleBillSubmit = async (e) => {
     e.preventDefault();
@@ -352,8 +442,16 @@ const PropertyDetail = () => {
       setBillError('Billing period is required');
       return;
     }
-    if (!isRentBill && !billForm.totalAmount) {
+    if (billForm.periodEnd > today()) {
+      setBillError("The billing period end can't be in the future — a bill covers a period that's already happened.");
+      return;
+    }
+    if (!billForm.totalAmount) {
       setBillError('Amount is required');
+      return;
+    }
+    if (billForm.dueDate && billForm.dueDate < billForm.periodEnd) {
+      setBillError('Due date must be on or after the billing period end');
       return;
     }
     setBillSubmitting(true);
@@ -364,13 +462,6 @@ const PropertyDetail = () => {
           billId: editingBillId,
           billType: billForm.billType,
           totalAmount: parseFloat(billForm.totalAmount),
-          periodStart: billForm.periodStart,
-          periodEnd: billForm.periodEnd,
-          dueDate: billForm.dueDate || null,
-        });
-      } else if (isRentBill) {
-        await createRentBill({
-          propertyId,
           periodStart: billForm.periodStart,
           periodEnd: billForm.periodEnd,
           dueDate: billForm.dueDate || null,
@@ -416,6 +507,31 @@ const PropertyDetail = () => {
     setBillError('');
   };
 
+  const handleRentBillSubmit = async (e) => {
+    e.preventDefault();
+    if (!rentBillForm.periodStart || !rentBillForm.periodEnd) {
+      setRentBillError('Billing period is required');
+      return;
+    }
+    setRentBillSubmitting(true);
+    setRentBillError('');
+    try {
+      await createRentBill({
+        propertyId,
+        periodStart: rentBillForm.periodStart,
+        periodEnd: rentBillForm.periodEnd,
+        dueDate: rentBillForm.dueDate || null,
+      });
+      setRentBillForm(emptyRentBill);
+      setShowRentBillForm(false);
+    } catch (err) {
+      console.error('Failed to generate rent bill:', err);
+      setRentBillError(err.message || 'Failed to generate rent bill');
+    } finally {
+      setRentBillSubmitting(false);
+    }
+  };
+
   const handlePropertySubmit = async (e) => {
     e.preventDefault();
     if (!propertyForm.name.trim() || !propertyForm.address.trim()) {
@@ -449,8 +565,259 @@ const PropertyDetail = () => {
     setShowPropertyForm(true);
   };
 
+  // Shared by the Rent and Utilities sections — a bill's split table/cards
+  // are identical either way, only the surrounding actions differ slightly.
+  const renderBillSplits = (bill) => {
+    const splits = billSplits.filter((s) => s.bill_id === bill.id);
+    const hasPaidSplit = splits.some((s) => s.status === 'paid');
+    const isUtility = bill.bill_type !== 'rent';
+
+    return (
+      <div key={bill.id} className="card">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="font-semibold text-secondary-900 capitalize">
+              {bill.bill_type} &mdash; <Money dollars={bill.total_amount} />
+            </p>
+            <p className="text-sm text-secondary-500">
+              {bill.billing_period_start} to {bill.billing_period_end}
+              {bill.due_date && <> &middot; Due {bill.due_date}</>}
+            </p>
+            {isUtility && (
+              <p className="text-xs mt-1">
+                {bill.locked_at ? (
+                  <span className="text-secondary-400">Sent &middot; locked against roster changes</span>
+                ) : (
+                  <span className="text-primary-600">Draft &middot; updates automatically if tenants change</span>
+                )}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => handleEditBill(bill)}
+              disabled={hasPaidSplit}
+              title={hasPaidSplit ? 'A tenant has already paid this bill — it can no longer be edited' : 'Edit bill'}
+              className="text-secondary-300 hover:text-primary-600 disabled:opacity-30 disabled:hover:text-secondary-300"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => handleRecalculate(bill.id)}
+              disabled={hasPaidSplit || recalculatingBillId === bill.id}
+              title={
+                hasPaidSplit
+                  ? 'A tenant has already paid this bill — recalculating is blocked to protect that record'
+                  : 'Recompute the split against the current tenant list'
+              }
+              className="text-secondary-400 hover:text-primary-600 disabled:opacity-30 disabled:hover:text-secondary-400"
+            >
+              <RefreshCw className={`w-4 h-4 ${recalculatingBillId === bill.id ? 'animate-spin' : ''}`} />
+            </button>
+            <button onClick={() => handleDeleteBill(bill)} className="text-secondary-300 hover:text-danger-600">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {isUtility && bill.needs_reissue && (
+          <div className="mb-4 flex items-center justify-between bg-warning-50 border border-warning-100 rounded-lg px-3 py-2">
+            <p className="text-sm text-warning-700 flex items-center">
+              <AlertTriangle className="w-4 h-4 mr-2 flex-shrink-0" />
+              Tenants changed since this bill was sent — the split may be out of date.
+            </p>
+            <button
+              onClick={() => handleReissue(bill.id)}
+              disabled={hasPaidSplit || recalculatingBillId === bill.id}
+              className="text-sm font-medium text-warning-700 hover:text-warning-800 whitespace-nowrap ml-3 disabled:opacity-50"
+            >
+              {recalculatingBillId === bill.id ? 'Reissuing...' : 'Reissue'}
+            </button>
+          </div>
+        )}
+
+        <div className="mb-4 flex items-center space-x-3 text-sm">
+          {bill.attachment_path ? (
+            <>
+              <button
+                onClick={() => handleViewAttachment(bill)}
+                disabled={openingAttachmentBillId === bill.id}
+                className="inline-flex items-center space-x-1 text-primary-600 hover:text-primary-700 disabled:opacity-50"
+              >
+                <Paperclip className="w-4 h-4" />
+                <span>{openingAttachmentBillId === bill.id ? 'Opening...' : bill.attachment_name || 'View attachment'}</span>
+              </button>
+              <button
+                onClick={() => removeBillAttachment(bill.id)}
+                className="text-secondary-300 hover:text-danger-600"
+                title="Remove attachment"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
+          ) : (
+            <label className="inline-flex items-center space-x-1 text-secondary-500 hover:text-primary-600 cursor-pointer">
+              <Paperclip className="w-4 h-4" />
+              <span>{uploadingBillId === bill.id ? 'Uploading...' : 'Attach bill (image/PDF)'}</span>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,application/pdf"
+                className="hidden"
+                disabled={uploadingBillId === bill.id}
+                onChange={(e) => handleAttachmentChange(bill.id, e)}
+              />
+            </label>
+          )}
+        </div>
+        {attachmentError && <p className="text-danger-600 text-xs mb-3">{attachmentError}</p>}
+        {recalcError && <p className="text-danger-600 text-xs mb-3">{recalcError}</p>}
+
+        {/* Desktop table */}
+        <div className="hidden sm:block">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-secondary-500 border-b border-secondary-200">
+                <th className="py-1">Tenant</th>
+                <th className="py-1">Room</th>
+                <th className="py-1">%</th>
+                <th className="py-1 text-right">Owed</th>
+                <th className="py-1 text-center">Status</th>
+                <th className="py-1 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {splits.map((split) => (
+                <React.Fragment key={split.id}>
+                <tr className="border-b border-secondary-100 last:border-0">
+                  <td className="py-1">
+                    {split.tenant_name}
+                    {split.rate_breakdown && (
+                      <button
+                        onClick={() =>
+                          setExpandedBreakdownSplitId((id) => (id === split.id ? null : split.id))
+                        }
+                        className="ml-1 text-secondary-300 hover:text-primary-600 align-middle"
+                        title="View rate breakdown"
+                      >
+                        {expandedBreakdownSplitId === split.id ? (
+                          <ChevronUp className="w-3 h-3 inline" />
+                        ) : (
+                          <ChevronDown className="w-3 h-3 inline" />
+                        )}
+                      </button>
+                    )}
+                  </td>
+                  <td className="py-1">{split.room}</td>
+                  <td className="py-1 tabular-nums">{split.percentage}%</td>
+                  <td className="py-1 text-right">
+                    <Money dollars={split.owed_amount} className="text-secondary-900" />
+                  </td>
+                  <td className="py-1 text-center">
+                    <StatusBadge status={effectiveStatus(split, bill)} />
+                  </td>
+                  <td className="py-1 text-right">
+                    <div className="flex items-center justify-end">
+                      <SplitActions
+                        split={split}
+                        sendingSplitId={sendingSplitId}
+                        onRevoke={handleRevokeLink}
+                        onSetStatus={setBillSplitStatus}
+                        onSendEmail={handleSendEmail}
+                      />
+                    </div>
+                  </td>
+                </tr>
+                {split.rate_breakdown && expandedBreakdownSplitId === split.id && (
+                  <tr className="bg-secondary-50">
+                    <td colSpan={6} className="py-2 px-3">
+                      <ul className="text-xs text-secondary-600 space-y-1">
+                        {split.rate_breakdown.map((seg, i) => (
+                          <li key={i} className="flex justify-between">
+                            <span>
+                              {seg.from} to {seg.to} ({seg.days} day{seg.days === 1 ? '' : 's'} @{' '}
+                              <Money cents={seg.amountCents} />/{seg.frequency})
+                            </span>
+                            <Money cents={seg.cents} className="font-medium" />
+                          </li>
+                        ))}
+                      </ul>
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile stacked cards */}
+        <div className="sm:hidden space-y-3">
+          {splits.map((split) => (
+            <div key={split.id} className="border border-secondary-200 rounded-lg p-3">
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <p className="font-medium text-secondary-900">{split.tenant_name}</p>
+                  <p className="text-xs text-secondary-500">
+                    {split.room} &middot; {split.percentage}%
+                  </p>
+                </div>
+                <div className="text-right">
+                  <Money dollars={split.owed_amount} as="p" className="text-secondary-900 block mb-1" />
+                  <StatusBadge status={effectiveStatus(split, bill)} />
+                </div>
+              </div>
+
+              {split.rate_breakdown && (
+                <>
+                  <button
+                    onClick={() => setExpandedBreakdownSplitId((id) => (id === split.id ? null : split.id))}
+                    className="text-xs text-primary-600 hover:text-primary-700 mb-2"
+                  >
+                    {expandedBreakdownSplitId === split.id ? 'Hide' : 'View'} rate breakdown
+                  </button>
+                  {expandedBreakdownSplitId === split.id && (
+                    <ul className="text-xs text-secondary-600 space-y-1 mb-2 bg-secondary-50 rounded p-2">
+                      {split.rate_breakdown.map((seg, i) => (
+                        <li key={i} className="flex justify-between">
+                          <span>
+                            {seg.from} to {seg.to} ({seg.days}d @ <Money cents={seg.amountCents} />/{seg.frequency})
+                          </span>
+                          <Money cents={seg.cents} className="font-medium" />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+
+              <div className="flex items-center justify-between pt-2 border-t border-secondary-100">
+                <SplitActions
+                  split={split}
+                  sendingSplitId={sendingSplitId}
+                  onRevoke={handleRevokeLink}
+                  onSetStatus={setBillSplitStatus}
+                  onSendEmail={handleSendEmail}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        {emailError && <p className="text-danger-600 text-xs mt-3">{emailError}</p>}
+      </div>
+    );
+  };
+
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <ConfirmModal
+        open={!!confirmState}
+        title={confirmState?.title}
+        message={confirmState?.message}
+        confirmLabel={confirmState?.confirmLabel}
+        onConfirm={confirmState?.onConfirm}
+        onCancel={() => setConfirmState(null)}
+      />
+
       <nav className="flex items-center text-sm text-secondary-500 mb-6" aria-label="Breadcrumb">
         <Link to="/dashboard" className="hover:text-secondary-900">Dashboard</Link>
         <ChevronRight className="w-3.5 h-3.5 mx-1.5" />
@@ -463,25 +830,32 @@ const PropertyDetail = () => {
         {showPropertyForm ? (
           <form onSubmit={handlePropertySubmit} className="card space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Property name</label>
+                <input
+                  className="input-field"
+                  value={propertyForm.name}
+                  onChange={(e) => setPropertyForm((p) => ({ ...p, name: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Address</label>
+                <input
+                  className="input-field"
+                  value={propertyForm.address}
+                  onChange={(e) => setPropertyForm((p) => ({ ...p, address: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-secondary-900 mb-1.5">Description (optional)</label>
               <input
                 className="input-field"
-                placeholder="Property name"
-                value={propertyForm.name}
-                onChange={(e) => setPropertyForm((p) => ({ ...p, name: e.target.value }))}
-              />
-              <input
-                className="input-field"
-                placeholder="Address"
-                value={propertyForm.address}
-                onChange={(e) => setPropertyForm((p) => ({ ...p, address: e.target.value }))}
+                maxLength={500}
+                value={propertyForm.description}
+                onChange={(e) => setPropertyForm((p) => ({ ...p, description: e.target.value }))}
               />
             </div>
-            <input
-              className="input-field"
-              placeholder="Description (optional)"
-              value={propertyForm.description}
-              onChange={(e) => setPropertyForm((p) => ({ ...p, description: e.target.value }))}
-            />
             {propertyError && <p className="text-danger-600 text-sm">{propertyError}</p>}
             <div className="flex space-x-3">
               <button type="submit" disabled={propertySubmitting} className="btn-primary">
@@ -532,41 +906,56 @@ const PropertyDetail = () => {
         {showTenantForm && (
           <form onSubmit={handleTenantSubmit} className="card mb-4 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <input
-                className="input-field"
-                placeholder="Name"
-                value={tenantForm.name}
-                onChange={(e) => setTenantForm((p) => ({ ...p, name: e.target.value }))}
-              />
-              <input
-                className="input-field"
-                placeholder="Room"
-                value={tenantForm.room}
-                onChange={(e) => setTenantForm((p) => ({ ...p, room: e.target.value }))}
-              />
-              <input
-                type="number"
-                min="1"
-                className="input-field"
-                placeholder="Occupants"
-                value={tenantForm.numberOfOccupants}
-                onChange={(e) => setTenantForm((p) => ({ ...p, numberOfOccupants: parseInt(e.target.value, 10) || 1 }))}
-              />
-              <input
-                type="email"
-                className="input-field"
-                placeholder="Email (optional)"
-                value={tenantForm.email}
-                onChange={(e) => setTenantForm((p) => ({ ...p, email: e.target.value }))}
-              />
-              <input
-                className="input-field"
-                placeholder="Phone (optional)"
-                value={tenantForm.phone}
-                onChange={(e) => setTenantForm((p) => ({ ...p, phone: e.target.value }))}
-              />
               <div>
-                <label className="block text-xs text-secondary-500 mb-1">Move-in date</label>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Name</label>
+                <input
+                  className="input-field"
+                  value={tenantForm.name}
+                  onChange={(e) => setTenantForm((p) => ({ ...p, name: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Room</label>
+                <input
+                  className="input-field"
+                  placeholder="e.g. Room 1"
+                  value={tenantForm.room}
+                  onChange={(e) => setTenantForm((p) => ({ ...p, room: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Occupants in this room</label>
+                <input
+                  type="number"
+                  min="1"
+                  className="input-field"
+                  value={tenantForm.numberOfOccupants}
+                  onChange={(e) => setTenantForm((p) => ({ ...p, numberOfOccupants: parseInt(e.target.value, 10) || 1 }))}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Email (optional)</label>
+                <input
+                  type="email"
+                  className="input-field"
+                  value={tenantForm.email}
+                  onChange={(e) => setTenantForm((p) => ({ ...p, email: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Phone (optional)</label>
+                <input
+                  className="input-field"
+                  value={tenantForm.phone}
+                  onChange={(e) => setTenantForm((p) => ({ ...p, phone: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Move-in date</label>
                 <input
                   type="date"
                   className="input-field"
@@ -575,7 +964,7 @@ const PropertyDetail = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs text-secondary-500 mb-1">Move-out date (optional)</label>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Move-out date (optional)</label>
                 <input
                   type="date"
                   className="input-field"
@@ -584,6 +973,36 @@ const PropertyDetail = () => {
                 />
               </div>
             </div>
+            {!editingTenantId && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-secondary-100">
+                <div>
+                  <label className="block text-sm font-medium text-secondary-900 mb-1.5">Rent (optional — can set later)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary-400">$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="input-field pl-7"
+                      placeholder="0.00"
+                      value={tenantForm.rentAmount}
+                      onChange={(e) => setTenantForm((p) => ({ ...p, rentAmount: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary-900 mb-1.5">Frequency</label>
+                  <select
+                    className="input-field"
+                    value={tenantForm.rentFrequency}
+                    onChange={(e) => setTenantForm((p) => ({ ...p, rentFrequency: e.target.value }))}
+                  >
+                    <option value="weekly">Weekly</option>
+                    <option value="fortnightly">Fortnightly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+              </div>
+            )}
             {tenantError && <p className="text-danger-600 text-sm">{tenantError}</p>}
             <div className="flex space-x-3">
               <button type="submit" disabled={tenantSubmitting} className="btn-primary">
@@ -603,7 +1022,10 @@ const PropertyDetail = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {activeTenants.map((tenant) => (
+            {activeTenants.map((tenant) => {
+              const balanceCents = balanceFor(tenant.id);
+              const latestSplit = latestSplitFor(tenant.id);
+              return (
               <div key={tenant.id} className="card flex items-start justify-between">
                 <div>
                   <p className="font-semibold text-secondary-900">{tenant.name}</p>
@@ -613,84 +1035,19 @@ const PropertyDetail = () => {
                   {tenant.move_out_date && (
                     <p className="text-sm text-secondary-500">Moves out: {tenant.move_out_date}</p>
                   )}
-
                   <div className="mt-3 pt-3 border-t border-secondary-100">
-                    {currentRateFor(tenant.id) ? (
-                      <p className="text-sm text-secondary-700 flex items-center">
-                        <DollarSign className="w-3.5 h-3.5 mr-1 text-secondary-400" />
-                        <Money cents={currentRateFor(tenant.id).amount_cents} className="text-secondary-700" />/{currentRateFor(tenant.id).frequency}
-                        <span className="text-secondary-400 ml-1">since {currentRateFor(tenant.id).effective_from}</span>
-                      </p>
-                    ) : (
-                      <p className="text-sm text-secondary-400">No rent rate set</p>
-                    )}
-                    <button
-                      onClick={() => handleOpenRateForm(tenant.id)}
-                      className="text-xs text-primary-600 hover:text-primary-700 mt-1"
-                    >
-                      {currentRateFor(tenant.id) ? 'Change rate' : 'Set rate'}
-                    </button>
-
-                    {ratesTenantId === tenant.id && (
-                      <form
-                        onSubmit={(e) => handleRateSubmit(e, tenant.id)}
-                        className="mt-2 space-y-2 bg-secondary-50 rounded-lg p-3"
+                    <p className="text-sm text-secondary-700">
+                      Owes across everything: <Money cents={balanceCents} className={balanceCents > 0 ? 'text-secondary-900' : 'text-success-700'} />
+                    </p>
+                    {latestSplit && (
+                      <a
+                        href={`/bill/${latestSplit.access_token}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center text-xs font-medium text-primary-600 hover:text-primary-700 mt-1"
                       >
-                        <div className="grid grid-cols-3 gap-2">
-                          <input
-                            type="number"
-                            step="0.01"
-                            className="input-field text-sm"
-                            placeholder="Amount"
-                            value={rateForm.amount}
-                            onChange={(e) => setRateForm((p) => ({ ...p, amount: e.target.value }))}
-                          />
-                          <select
-                            className="input-field text-sm"
-                            value={rateForm.frequency}
-                            onChange={(e) => setRateForm((p) => ({ ...p, frequency: e.target.value }))}
-                          >
-                            <option value="weekly">Weekly</option>
-                            <option value="fortnightly">Fortnightly</option>
-                            <option value="monthly">Monthly</option>
-                          </select>
-                          <input
-                            type="date"
-                            className="input-field text-sm"
-                            value={rateForm.effectiveFrom}
-                            onChange={(e) => setRateForm((p) => ({ ...p, effectiveFrom: e.target.value }))}
-                          />
-                        </div>
-                        {rateError && <p className="text-danger-600 text-xs">{rateError}</p>}
-                        <div className="flex space-x-2">
-                          <button type="submit" disabled={rateSubmitting} className="btn-primary text-xs px-3 py-1">
-                            {rateSubmitting ? 'Saving...' : 'Save'}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-secondary text-xs px-3 py-1"
-                            onClick={() => setRatesTenantId(null)}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
-                    )}
-
-                    {rateHistoryFor(tenant.id).length > 1 && (
-                      <ul className="mt-2 space-y-1">
-                        {rateHistoryFor(tenant.id).map((r) => (
-                          <li key={r.id} className="text-xs text-secondary-500 flex items-center justify-between">
-                            <span>
-                              <Money cents={r.amount_cents} className="text-secondary-500" />/{r.frequency} &middot; {r.effective_from} to{' '}
-                              {r.effective_to || 'ongoing'}
-                            </span>
-                            <button onClick={() => handleDeleteRate(r.id)} className="text-secondary-300 hover:text-danger-600">
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
+                        Preview their breakdown &rarr;
+                      </a>
                     )}
                   </div>
                 </div>
@@ -710,7 +1067,8 @@ const PropertyDetail = () => {
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -741,11 +1099,187 @@ const PropertyDetail = () => {
         )}
       </section>
 
-      {/* Bills */}
+      {/* Rent — its own area: per-tenant rates, and rent bills generated from them */}
+      <section className="mb-12">
+        <h2 className="text-xl font-semibold text-secondary-900 flex items-center mb-4">
+          <DollarSign className="w-5 h-5 mr-2" /> Rent
+        </h2>
+
+        {activeTenants.length === 0 ? (
+          <div className="card text-center py-12">
+            <DollarSign className="w-10 h-10 text-secondary-300 mx-auto mb-3" />
+            <p className="text-secondary-600">Add a tenant above to set their rent.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            {activeTenants.map((tenant) => (
+              <div key={tenant.id} className="card">
+                <p className="font-semibold text-secondary-900">{tenant.name}</p>
+                <p className="text-xs text-secondary-500 mb-2">Room: {tenant.room}</p>
+
+                {currentRateFor(tenant.id) ? (
+                  <p className="text-sm text-secondary-700 flex items-center">
+                    <Money cents={currentRateFor(tenant.id).amount_cents} className="text-secondary-700" />/{currentRateFor(tenant.id).frequency}
+                    <span className="text-secondary-400 ml-1">since {currentRateFor(tenant.id).effective_from}</span>
+                  </p>
+                ) : (
+                  <p className="text-sm text-secondary-400">No rent rate set</p>
+                )}
+                <button
+                  onClick={() => handleOpenRateForm(tenant.id)}
+                  className="text-xs text-primary-600 hover:text-primary-700 mt-1"
+                >
+                  {currentRateFor(tenant.id) ? 'Change rent' : 'Set rent'}
+                </button>
+
+                {ratesTenantId === tenant.id && (
+                  <form
+                    onSubmit={(e) => handleRateSubmit(e, tenant.id)}
+                    className="mt-3 space-y-3 bg-secondary-50 rounded-lg p-3"
+                  >
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-xs text-secondary-500 mb-1">Amount</label>
+                        <div className="relative">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-secondary-400 text-sm">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="input-field text-sm pl-6"
+                            value={rateForm.amount}
+                            onChange={(e) => setRateForm((p) => ({ ...p, amount: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-secondary-500 mb-1">Frequency</label>
+                        <select
+                          className="input-field text-sm"
+                          value={rateForm.frequency}
+                          onChange={(e) => setRateForm((p) => ({ ...p, frequency: e.target.value }))}
+                        >
+                          <option value="weekly">Weekly</option>
+                          <option value="fortnightly">Fortnightly</option>
+                          <option value="monthly">Monthly</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-secondary-500 mb-1">Effective from</label>
+                        <input
+                          type="date"
+                          className="input-field text-sm"
+                          value={rateForm.effectiveFrom}
+                          onChange={(e) => setRateForm((p) => ({ ...p, effectiveFrom: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    {rateError && <p className="text-danger-600 text-xs">{rateError}</p>}
+                    <div className="flex space-x-2">
+                      <button type="submit" disabled={rateSubmitting} className="btn-primary text-xs px-3 py-1">
+                        {rateSubmitting ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary text-xs px-3 py-1"
+                        onClick={() => setRatesTenantId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {rateHistoryFor(tenant.id).length > 1 && (
+                  <ul className="mt-2 space-y-1">
+                    {rateHistoryFor(tenant.id).map((r) => (
+                      <li key={r.id} className="text-xs text-secondary-500 flex items-center justify-between">
+                        <span>
+                          <Money cents={r.amount_cents} className="text-secondary-500" />/{r.frequency} &middot; {r.effective_from} to{' '}
+                          {r.effective_to || 'ongoing'}
+                        </span>
+                        <button onClick={() => handleDeleteRate(r.id)} className="text-secondary-300 hover:text-danger-600">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-secondary-500 uppercase tracking-wide">Rent bills</h3>
+          <button
+            onClick={() => setShowRentBillForm((s) => !s)}
+            disabled={activeTenants.length === 0}
+            className="btn-secondary flex items-center space-x-2 disabled:opacity-50"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Generate Rent Bill</span>
+          </button>
+        </div>
+
+        {showRentBillForm && (
+          <form onSubmit={handleRentBillSubmit} className="card mb-4 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Period start</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  value={rentBillForm.periodStart}
+                  onChange={(e) => setRentBillForm((p) => ({ ...p, periodStart: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Period end</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  value={rentBillForm.periodEnd}
+                  onChange={(e) => setRentBillForm((p) => ({ ...p, periodEnd: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Due date (optional)</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  value={rentBillForm.dueDate}
+                  onChange={(e) => setRentBillForm((p) => ({ ...p, dueDate: e.target.value }))}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-secondary-500">Each tenant is charged their own rate for this period — no shared split.</p>
+            {rentBillError && <p className="text-danger-600 text-sm">{rentBillError}</p>}
+            <div className="flex space-x-3">
+              <button type="submit" disabled={rentBillSubmitting} className="btn-primary">
+                {rentBillSubmitting ? 'Generating...' : 'Generate Rent Bill'}
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => setShowRentBillForm(false)}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
+
+        {rentBills.length === 0 ? (
+          <div className="card text-center py-12">
+            <Inbox className="w-10 h-10 text-secondary-300 mx-auto mb-3" />
+            <p className="text-secondary-600">No rent bills yet.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">{rentBills.map(renderBillSplits)}</div>
+        )}
+      </section>
+
+      {/* Utilities — episodic bills, split by occupancy, unrelated to rent rates */}
       <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-secondary-900 flex items-center">
-            <Receipt className="w-5 h-5 mr-2" /> Bills
+            <Zap className="w-5 h-5 mr-2" /> Utilities
           </h2>
           <button
             onClick={() => {
@@ -768,47 +1302,58 @@ const PropertyDetail = () => {
         {showBillForm && (
           <form onSubmit={handleBillSubmit} className="card mb-4 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <select
-                className="input-field"
-                value={billForm.billType}
-                onChange={(e) => setBillForm((p) => ({ ...p, billType: e.target.value }))}
-              >
-                <option value="utilities">Utilities</option>
-                <option value="rent">Rent</option>
-                <option value="internet">Internet</option>
-                <option value="other">Other</option>
-              </select>
-              {isRentBill ? (
-                <div className="flex items-center text-xs text-secondary-500 bg-secondary-50 rounded-lg px-3">
-                  Auto-calculated from tenant rent rates
-                </div>
-              ) : (
-                <input
-                  type="number"
-                  step="0.01"
-                  className="input-field"
-                  placeholder="Total amount"
-                  value={billForm.totalAmount}
-                  onChange={(e) => setBillForm((p) => ({ ...p, totalAmount: e.target.value }))}
-                />
-              )}
-              <input
-                type="date"
-                className="input-field"
-                value={billForm.periodStart}
-                onChange={(e) => setBillForm((p) => ({ ...p, periodStart: e.target.value }))}
-              />
-              <input
-                type="date"
-                className="input-field"
-                value={billForm.periodEnd}
-                onChange={(e) => setBillForm((p) => ({ ...p, periodEnd: e.target.value }))}
-              />
               <div>
-                <label className="block text-xs text-secondary-500 mb-1">Due date (optional)</label>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Type</label>
+                <select
+                  className="input-field"
+                  value={billForm.billType}
+                  onChange={(e) => setBillForm((p) => ({ ...p, billType: e.target.value }))}
+                >
+                  {UTILITY_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Total amount</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary-400">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input-field pl-7"
+                    value={billForm.totalAmount}
+                    onChange={(e) => setBillForm((p) => ({ ...p, totalAmount: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Billing period start</label>
                 <input
                   type="date"
                   className="input-field"
+                  value={billForm.periodStart}
+                  onChange={(e) => setBillForm((p) => ({ ...p, periodStart: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Billing period end</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  max={today()}
+                  value={billForm.periodEnd}
+                  onChange={(e) => setBillForm((p) => ({ ...p, periodEnd: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">Due date (optional)</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  min={billForm.periodEnd || undefined}
                   value={billForm.dueDate}
                   onChange={(e) => setBillForm((p) => ({ ...p, dueDate: e.target.value }))}
                 />
@@ -817,13 +1362,7 @@ const PropertyDetail = () => {
             {billError && <p className="text-danger-600 text-sm">{billError}</p>}
             <div className="flex space-x-3">
               <button type="submit" disabled={billSubmitting} className="btn-primary">
-                {billSubmitting
-                  ? 'Saving...'
-                  : editingBillId
-                  ? 'Save Changes'
-                  : isRentBill
-                  ? 'Generate Rent Bill'
-                  : 'Create Bill & Split'}
+                {billSubmitting ? 'Saving...' : editingBillId ? 'Save Changes' : 'Create Bill & Split'}
               </button>
               <button type="button" className="btn-secondary" onClick={handleCancelBillForm}>
                 Cancel
@@ -832,226 +1371,13 @@ const PropertyDetail = () => {
           </form>
         )}
 
-        {propertyBills.length === 0 ? (
+        {utilityBills.length === 0 ? (
           <div className="card text-center py-12">
             <Inbox className="w-10 h-10 text-secondary-300 mx-auto mb-3" />
             <p className="text-secondary-600">No bills yet. Add one above once tenants are in place.</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {propertyBills.map((bill) => {
-              const splits = billSplits.filter((s) => s.bill_id === bill.id);
-              const hasPaidSplit = splits.some((s) => s.status === 'paid');
-              return (
-                <div key={bill.id} className="card">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <p className="font-semibold text-secondary-900 capitalize">
-                        {bill.bill_type} &mdash; <Money dollars={bill.total_amount} />
-                      </p>
-                      <p className="text-sm text-secondary-500">
-                        {bill.billing_period_start} to {bill.billing_period_end}
-                        {bill.due_date && <> &middot; Due {bill.due_date}</>}
-                      </p>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <button
-                        onClick={() => handleEditBill(bill)}
-                        disabled={hasPaidSplit}
-                        title={hasPaidSplit ? 'A tenant has already paid this bill — it can no longer be edited' : 'Edit bill'}
-                        className="text-secondary-300 hover:text-primary-600 disabled:opacity-30 disabled:hover:text-secondary-300"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleRecalculate(bill.id)}
-                        disabled={hasPaidSplit || recalculatingBillId === bill.id}
-                        title={
-                          hasPaidSplit
-                            ? 'A tenant has already paid this bill — recalculating is blocked to protect that record'
-                            : 'Recompute the split against the current tenant list'
-                        }
-                        className="text-secondary-400 hover:text-primary-600 disabled:opacity-30 disabled:hover:text-secondary-400"
-                      >
-                        <RefreshCw className={`w-4 h-4 ${recalculatingBillId === bill.id ? 'animate-spin' : ''}`} />
-                      </button>
-                      <button onClick={() => handleDeleteBill(bill)} className="text-secondary-300 hover:text-danger-600">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="mb-4 flex items-center space-x-3 text-sm">
-                    {bill.attachment_path ? (
-                      <>
-                        <button
-                          onClick={() => handleViewAttachment(bill)}
-                          disabled={openingAttachmentBillId === bill.id}
-                          className="inline-flex items-center space-x-1 text-primary-600 hover:text-primary-700 disabled:opacity-50"
-                        >
-                          <Paperclip className="w-4 h-4" />
-                          <span>{openingAttachmentBillId === bill.id ? 'Opening...' : bill.attachment_name || 'View attachment'}</span>
-                        </button>
-                        <button
-                          onClick={() => removeBillAttachment(bill.id)}
-                          className="text-secondary-300 hover:text-danger-600"
-                          title="Remove attachment"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </>
-                    ) : (
-                      <label className="inline-flex items-center space-x-1 text-secondary-500 hover:text-primary-600 cursor-pointer">
-                        <Paperclip className="w-4 h-4" />
-                        <span>{uploadingBillId === bill.id ? 'Uploading...' : 'Attach bill (image/PDF)'}</span>
-                        <input
-                          type="file"
-                          accept="image/png,image/jpeg,image/webp,application/pdf"
-                          className="hidden"
-                          disabled={uploadingBillId === bill.id}
-                          onChange={(e) => handleAttachmentChange(bill.id, e)}
-                        />
-                      </label>
-                    )}
-                  </div>
-                  {attachmentError && <p className="text-danger-600 text-xs mb-3">{attachmentError}</p>}
-                  {recalcError && <p className="text-danger-600 text-xs mb-3">{recalcError}</p>}
-
-                  {/* Desktop table */}
-                  <div className="hidden sm:block">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-left text-secondary-500 border-b border-secondary-200">
-                          <th className="py-1">Tenant</th>
-                          <th className="py-1">Room</th>
-                          <th className="py-1">%</th>
-                          <th className="py-1 text-right">Owed</th>
-                          <th className="py-1 text-center">Status</th>
-                          <th className="py-1 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {splits.map((split) => (
-                          <React.Fragment key={split.id}>
-                          <tr className="border-b border-secondary-100 last:border-0">
-                            <td className="py-1">
-                              {split.tenant_name}
-                              {split.rate_breakdown && (
-                                <button
-                                  onClick={() =>
-                                    setExpandedBreakdownSplitId((id) => (id === split.id ? null : split.id))
-                                  }
-                                  className="ml-1 text-secondary-300 hover:text-primary-600 align-middle"
-                                  title="View rate breakdown"
-                                >
-                                  {expandedBreakdownSplitId === split.id ? (
-                                    <ChevronUp className="w-3 h-3 inline" />
-                                  ) : (
-                                    <ChevronDown className="w-3 h-3 inline" />
-                                  )}
-                                </button>
-                              )}
-                            </td>
-                            <td className="py-1">{split.room}</td>
-                            <td className="py-1 tabular-nums">{split.percentage}%</td>
-                            <td className="py-1 text-right">
-                              <Money dollars={split.owed_amount} className="text-secondary-900" />
-                            </td>
-                            <td className="py-1 text-center">
-                              <StatusBadge status={split.status || 'pending'} />
-                            </td>
-                            <td className="py-1 text-right">
-                              <div className="flex items-center justify-end">
-                                <SplitActions
-                                  split={split}
-                                  sendingSplitId={sendingSplitId}
-                                  onRevoke={handleRevokeLink}
-                                  onSetStatus={setBillSplitStatus}
-                                  onSendEmail={handleSendEmail}
-                                />
-                              </div>
-                            </td>
-                          </tr>
-                          {split.rate_breakdown && expandedBreakdownSplitId === split.id && (
-                            <tr className="bg-secondary-50">
-                              <td colSpan={6} className="py-2 px-3">
-                                <ul className="text-xs text-secondary-600 space-y-1">
-                                  {split.rate_breakdown.map((seg, i) => (
-                                    <li key={i} className="flex justify-between">
-                                      <span>
-                                        {seg.from} to {seg.to} ({seg.days} day{seg.days === 1 ? '' : 's'} @{' '}
-                                        <Money cents={seg.amountCents} />/{seg.frequency})
-                                      </span>
-                                      <Money cents={seg.cents} className="font-medium" />
-                                    </li>
-                                  ))}
-                                </ul>
-                              </td>
-                            </tr>
-                          )}
-                          </React.Fragment>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Mobile stacked cards */}
-                  <div className="sm:hidden space-y-3">
-                    {splits.map((split) => (
-                      <div key={split.id} className="border border-secondary-200 rounded-lg p-3">
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <p className="font-medium text-secondary-900">{split.tenant_name}</p>
-                            <p className="text-xs text-secondary-500">
-                              {split.room} &middot; {split.percentage}%
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <Money dollars={split.owed_amount} as="p" className="text-secondary-900 block mb-1" />
-                            <StatusBadge status={split.status || 'pending'} />
-                          </div>
-                        </div>
-
-                        {split.rate_breakdown && (
-                          <>
-                            <button
-                              onClick={() => setExpandedBreakdownSplitId((id) => (id === split.id ? null : split.id))}
-                              className="text-xs text-primary-600 hover:text-primary-700 mb-2"
-                            >
-                              {expandedBreakdownSplitId === split.id ? 'Hide' : 'View'} rate breakdown
-                            </button>
-                            {expandedBreakdownSplitId === split.id && (
-                              <ul className="text-xs text-secondary-600 space-y-1 mb-2 bg-secondary-50 rounded p-2">
-                                {split.rate_breakdown.map((seg, i) => (
-                                  <li key={i} className="flex justify-between">
-                                    <span>
-                                      {seg.from} to {seg.to} ({seg.days}d @ <Money cents={seg.amountCents} />/{seg.frequency})
-                                    </span>
-                                    <Money cents={seg.cents} className="font-medium" />
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </>
-                        )}
-
-                        <div className="flex items-center justify-between pt-2 border-t border-secondary-100">
-                          <SplitActions
-                            split={split}
-                            sendingSplitId={sendingSplitId}
-                            onRevoke={handleRevokeLink}
-                            onSetStatus={setBillSplitStatus}
-                            onSendEmail={handleSendEmail}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {emailError && <p className="text-danger-600 text-xs mt-3">{emailError}</p>}
-                </div>
-              );
-            })}
-          </div>
+          <div className="space-y-4">{utilityBills.map(renderBillSplits)}</div>
         )}
       </section>
     </div>

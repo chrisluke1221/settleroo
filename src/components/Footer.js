@@ -13,7 +13,7 @@ const Footer = () => {
               Home
             </Link>
             <a
-              href="mailto:support@roomietab.com"
+              href="mailto:chrisluke1221@gmail.com"
               className="text-secondary-500 hover:text-secondary-900 transition-colors duration-200 flex items-center space-x-1"
             >
               <Mail className="w-3.5 h-3.5" />
