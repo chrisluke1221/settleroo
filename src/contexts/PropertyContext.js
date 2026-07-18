@@ -4,6 +4,7 @@ import { useAuth } from './AuthContext';
 import { computeSplits } from '../lib/billSplit';
 import { computeRentForPeriod, ratesOverlap } from '../lib/rentCalc';
 import { formatLocalDate } from '../lib/dates';
+import { EntitlementError } from '../lib/entitlements';
 
 const PropertyContext = createContext();
 
@@ -25,6 +26,28 @@ export const PropertyProvider = ({ children }) => {
   const [landlordSettings, setLandlordSettings] = useState({ notify_overdue: true, notify_rent: true });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // Set when a plan limit blocks an action; the global UpgradeModal renders
+  // from this. Cleared on dismiss.
+  const [entitlementBlock, setEntitlementBlock] = useState(null);
+
+  // The single client-side gate for plan limits. The RPC is the enforcement
+  // point (server-side, security definer); this helper calls it at the
+  // moment of the action, and on a block both surfaces the upgrade modal
+  // and throws so the calling flow stops. Applied to the three PRD-named
+  // actions only: property create, tenant create, bill create. The
+  // automatic rent-bill catch-up is deliberately not gated — charging rent
+  // that's already owed is core behavior, not new usage.
+  const requireEntitlement = async (key) => {
+    const { data, error: rpcError } = await supabase.rpc('check_entitlement', { p_key: key });
+    if (rpcError) throw rpcError;
+    if (!data?.allowed) {
+      setEntitlementBlock(data);
+      throw new EntitlementError(data);
+    }
+    return data;
+  };
+
+  const clearEntitlementBlock = () => setEntitlementBlock(null);
 
   const refresh = useCallback(async () => {
     if (!user) {
@@ -121,6 +144,7 @@ export const PropertyProvider = ({ children }) => {
   }, [refresh]);
 
   const createProperty = async ({ name, address, description }) => {
+    await requireEntitlement('max_properties');
     const { data, error } = await supabase
       .from('properties')
       .insert({ name, address, description, landlord_id: user.id })
@@ -144,10 +168,19 @@ export const PropertyProvider = ({ children }) => {
   };
 
   const deleteProperty = async (propertyId) => {
+    // Tenants and bills cascade-delete at the DB, but their attachment files
+    // live in storage and would orphan — remove those first.
+    const attachmentPaths = bills
+      .filter((b) => b.property_id === propertyId && b.attachment_path)
+      .map((b) => b.attachment_path);
+    if (attachmentPaths.length > 0) {
+      await supabase.storage.from('bill-attachments').remove(attachmentPaths);
+    }
     const { error } = await supabase.from('properties').delete().eq('id', propertyId);
     if (error) throw error;
     setProperties((prev) => prev.filter((p) => p.id !== propertyId));
     setTenants((prev) => prev.filter((t) => t.property_id !== propertyId));
+    setBills((prev) => prev.filter((b) => b.property_id !== propertyId));
   };
 
   // Ground truth for "who's on this property right now" at a point in time,
@@ -177,6 +210,7 @@ export const PropertyProvider = ({ children }) => {
     rentAmountCents,
     rentFrequency,
   }) => {
+    await requireEntitlement('max_active_tenants');
     const { data, error } = await supabase
       .from('tenants')
       .insert({
@@ -261,6 +295,7 @@ export const PropertyProvider = ({ children }) => {
   // create tenants and immediately bill them in the same function — the
   // context's `tenants` closure won't include those until the next render.
   const createBillWithSplits = async ({ propertyId, billType, totalAmount, periodStart, periodEnd, dueDate, tenantList = tenants }) => {
+    await requireEntitlement('max_bills_per_month');
     const propertyTenants = tenantList.filter((t) => t.property_id === propertyId && t.status !== 'former');
     if (propertyTenants.length === 0) {
       throw new Error('This property has no active tenants to split the bill across.');
@@ -613,6 +648,7 @@ export const PropertyProvider = ({ children }) => {
   // alongside the automatic monthly generation below for backfilling history
   // or an out-of-cycle charge.
   const createRentBill = async ({ propertyId, periodStart, periodEnd, dueDate }) => {
+    await requireEntitlement('max_bills_per_month');
     const propertyTenants = tenants.filter((t) => t.property_id === propertyId && t.status !== 'former');
     const charges = buildRentCharges(propertyTenants, rentRates, periodStart, periodEnd);
     if (charges.length === 0) {
@@ -908,6 +944,8 @@ export const PropertyProvider = ({ children }) => {
     addRentRate,
     deleteRentRate,
     createRentBill,
+    entitlementBlock,
+    clearEntitlementBlock,
   };
 
   return (

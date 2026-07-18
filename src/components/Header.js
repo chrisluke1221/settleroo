@@ -9,7 +9,8 @@ import {
   User,
   Menu,
   X,
-  DollarSign
+  DollarSign,
+  Tag
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -32,7 +33,7 @@ const Header = () => {
         { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
         { name: 'Properties', path: '/properties', icon: Building2 },
       ]
-    : [];
+    : [{ name: 'Pricing', path: '/pricing', icon: Tag }];
 
   return (
     <header className="bg-white/80 backdrop-blur-sm border-b border-secondary-200 sticky top-0 z-50">

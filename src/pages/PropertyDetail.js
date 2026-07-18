@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ChevronRight,
   Plus,
@@ -53,6 +53,7 @@ const today = todayLocal;
 
 const PropertyDetail = () => {
   const { propertyId } = useParams();
+  const navigate = useNavigate();
   const {
     properties,
     tenants,
@@ -63,6 +64,7 @@ const PropertyDetail = () => {
     error,
     refresh,
     updateProperty,
+    deleteProperty,
     createTenant,
     updateTenant,
     deleteTenant,
@@ -415,6 +417,25 @@ const PropertyDetail = () => {
           await deleteTenant(tenant.id);
         } catch (err) {
           console.error('Failed to remove tenant:', err);
+        }
+      },
+    });
+  };
+
+  const handleDeleteProperty = () => {
+    const tenantCount = tenants.filter((t) => t.property_id === propertyId).length;
+    const billCount = bills.filter((b) => b.property_id === propertyId).length;
+    setConfirmState({
+      title: `Delete ${property.name}?`,
+      message: `This permanently deletes the property, its ${tenantCount} tenant record${tenantCount === 1 ? '' : 's'}, and all ${billCount} bill${billCount === 1 ? '' : 's'} — including any payment history and tenant links. This cannot be undone.`,
+      confirmLabel: 'Delete property',
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await deleteProperty(propertyId);
+          navigate('/properties');
+        } catch (err) {
+          console.error('Failed to delete property:', err);
         }
       },
     });
@@ -874,9 +895,14 @@ const PropertyDetail = () => {
               <p className="text-secondary-600">{property.address}</p>
               {property.description && <p className="text-secondary-500 text-sm mt-1">{property.description}</p>}
             </div>
-            <button onClick={handleEditProperty} className="text-secondary-300 hover:text-primary-600 mt-1">
-              <Pencil className="w-4 h-4" />
-            </button>
+            <div className="flex items-center space-x-2 mt-1">
+              <button onClick={handleEditProperty} className="text-secondary-300 hover:text-primary-600" title="Edit property">
+                <Pencil className="w-4 h-4" />
+              </button>
+              <button onClick={handleDeleteProperty} className="text-secondary-300 hover:text-danger-600" title="Delete property">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
       </div>
