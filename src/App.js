@@ -8,7 +8,9 @@ import Dashboard from './pages/Dashboard';
 import Properties from './pages/Properties';
 import PropertyDetail from './pages/PropertyDetail';
 import Login from './pages/Login';
+import Pricing from './pages/Pricing';
 import TenantBillView from './pages/TenantBillView';
+import UpgradeModal from './components/UpgradeModal';
 import { PropertyProvider } from './contexts/PropertyContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
@@ -39,6 +41,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<HomeOrDashboard />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/pricing" element={<Pricing />} />
       <Route path="/bill/:token" element={<TenantBillView />} />
       <Route
         path="/dashboard"
@@ -86,6 +89,7 @@ const AppShell = () => {
         <AppRoutes />
       </main>
       <Footer />
+      <UpgradeModal />
     </div>
   );
 };

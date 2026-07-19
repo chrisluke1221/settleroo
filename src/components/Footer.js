@@ -12,6 +12,9 @@ const Footer = () => {
             <Link to="/" className="text-secondary-500 hover:text-secondary-900 transition-colors duration-200">
               Home
             </Link>
+            <Link to="/pricing" className="text-secondary-500 hover:text-secondary-900 transition-colors duration-200">
+              Pricing
+            </Link>
             <a
               href="mailto:chrisluke1221@gmail.com"
               className="text-secondary-500 hover:text-secondary-900 transition-colors duration-200 flex items-center space-x-1"
