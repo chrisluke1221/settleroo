@@ -24,8 +24,8 @@ const UpgradeModal = () => {
           <div>
             <h3 className="font-semibold text-secondary-900">You've hit a plan limit</h3>
             <p className="text-sm text-secondary-600 mt-1">
-              {upgradeMessage(entitlementBlock)} To {label.action}, upgrade to Pro — unlimited
-              properties, tenants, and bills.
+              {upgradeMessage(entitlementBlock)} To {label.action}, upgrade to Pro — $10/property/month,
+              no cap on properties, tenants, or bills.
             </p>
           </div>
         </div>
