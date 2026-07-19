@@ -16,7 +16,6 @@ const TITLE = 'Pricing — RoomieTab';
 const FEATURE_ROWS = [
   { key: 'max_properties', label: 'Properties' },
   { key: 'max_active_tenants', label: 'Active tenants' },
-  { key: 'max_bills_per_month', label: 'Bills issued / month' },
   { key: '_attachments', label: 'Bill attachments' },
   { key: 'branding_removable', label: 'Remove "Powered by RoomieTab" from tenant pages' },
   { key: 'email_ingestion', label: 'Email-in AI bill ingestion (coming soon)' },
@@ -27,7 +26,7 @@ const FEATURE_ROWS = [
 const faqs = [
   {
     q: 'What happens when I hit a limit?',
-    a: "Nothing breaks and nothing is deleted. The action that would exceed the limit (adding a property, tenant, or bill) is paused and you're shown exactly which limit you've reached, with the option to upgrade. Everything you've already created keeps working.",
+    a: "Nothing breaks and nothing is deleted. The action that would exceed the limit (adding a second property, or a fifth tenant on Starter) is paused and you're shown exactly which limit you've reached, with the option to upgrade. Everything you've already created keeps working.",
   },
   {
     q: 'Can I cancel any time?',
@@ -129,7 +128,8 @@ const Pricing = () => {
                     </span>
                     {cents > 0 && (
                       <span className="text-secondary-500 text-sm ml-1">
-                        /{period === 'yearly' ? 'year' : 'month'}
+                        /{plan.price_unit === 'per_property' ? 'property/' : ''}
+                        {period === 'yearly' ? 'year' : 'month'}
                       </span>
                     )}
                   </p>
