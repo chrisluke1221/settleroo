@@ -58,11 +58,22 @@ export const AuthProvider = ({ children }) => {
     if (error) throw error;
   };
 
+  // Only Google sign-in supplies a name automatically. Magic-link users
+  // have none until they set it here — see the NameSetupBanner prompt.
+  // updateUser triggers onAuthStateChange itself, so `user` refreshes
+  // without extra plumbing.
+  const updateName = async (fullName) => {
+    const { data, error } = await supabase.auth.updateUser({ data: { full_name: fullName } });
+    if (error) throw error;
+    return data.user;
+  };
+
   const value = {
     user,
     signInWithGoogle,
     sendMagicLink,
     logout,
+    updateName,
     loading,
     isAuthenticated: !!user,
   };
