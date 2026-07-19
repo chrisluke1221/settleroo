@@ -1,3 +1,5 @@
+> ⚠️ **SUPERSEDED (2026-07-19).** This version is kept as history only. The canonical, refined roadmap is **`2026-07-19-roomietab-v2-roadmap.md`** — read that one. It folds in the fixes from `2026-07-19-roomietab-v2-karpathy-review.md` (North Star + outcome targets, a numeric D→E gate, a real AI-extraction verifier, the USP guardrail enforced in code, and an assumptions/pricing block).
+
 # RoomieTab v2 Roadmap — Monetization, Operator CRM, and the AI Wedge
 
 **Status:** Phase A shipped ([PR #7](https://github.com/chrisluke1221/roomtab/pull/7)) · Phases B–E planned, not started
