@@ -7,6 +7,7 @@ import { todayLocal } from '../lib/dates';
 import Money from '../components/Money';
 import StatusBadge from '../components/StatusBadge';
 import SplitActions from '../components/SplitActions';
+import NameSetupBanner from '../components/NameSetupBanner';
 
 // "Inbox zero for property money" — a returning landlord sees what needs
 // attention, not a marketing hero. Everything here is derived from data
@@ -206,6 +207,7 @@ const Dashboard = () => {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <NameSetupBanner />
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
         <h1 className="text-3xl font-bold text-secondary-900">Work queue</h1>
         <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
