@@ -28,18 +28,16 @@ const RequireAuth = ({ children }) => {
   );
 };
 
-// An authenticated landlord lands on their work queue, not the marketing
-// page — the marketing page is only for logged-out visitors.
-const HomeOrDashboard = () => {
-  const { isAuthenticated, loading } = useAuth();
-  if (loading) return null;
-  return isAuthenticated ? <Navigate to="/dashboard" replace /> : <Home />;
-};
-
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<HomeOrDashboard />} />
+      {/* The marketing page is reachable by anyone, logged in or not — Home
+          itself already swaps its CTA to "Go to Dashboard" when authenticated.
+          Signing in redirects straight to /dashboard (see AuthContext's
+          redirectTo), so this only affects a logged-in user who navigates
+          back to "/" on purpose (footer link, bookmark) — they should see
+          the site, not get bounced. */}
+      <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/bill/:token" element={<TenantBillView />} />
