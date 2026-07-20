@@ -25,6 +25,7 @@ const DEMO = {
   room: 'Room 2',
   occupants: 1,
   occupancyDays: 30,
+  tenantCount: 4,
   totalPersonDays: 96,
   percentage: 31.25,
   totalAmount: 192,
@@ -34,6 +35,7 @@ const DEMO = {
 
 const DemoBill = () => {
   const otherPersonDays = DEMO.totalPersonDays - DEMO.occupancyDays * DEMO.occupants;
+  const otherTenantCount = DEMO.tenantCount - 1;
 
   return (
     <TenantShell propertyName={DEMO.propertyName} landlordName={DEMO.landlordName}>
@@ -78,6 +80,23 @@ const DemoBill = () => {
               <p className="text-xs font-semibold text-secondary-600 uppercase tracking-wide">How this was calculated</p>
             </div>
             <div className="divide-y divide-secondary-100 text-sm">
+              {otherTenantCount > 0 && (
+                <div className="flex items-start justify-between px-4 py-3">
+                  <div className="flex items-start space-x-2">
+                    <Users className="w-4 h-4 text-secondary-400 mt-0.5" />
+                    <div>
+                      <p className="text-secondary-900 font-medium">
+                        Sharing this bill with {otherTenantCount} other tenant{otherTenantCount === 1 ? '' : 's'}
+                      </p>
+                      <p className="text-secondary-500">
+                        Everyone pays for the exact days they lived here, not a flat split — so your share
+                        depends on how long you (and each other tenant) were here this period.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-start justify-between px-4 py-3">
                 <div className="flex items-start space-x-2">
                   <CalendarDays className="w-4 h-4 text-secondary-400 mt-0.5" />
@@ -102,7 +121,7 @@ const DemoBill = () => {
 
               <div className="flex items-center justify-between px-4 py-3 bg-secondary-50">
                 <span className="text-secondary-700">
-                  Your person-days = {DEMO.occupancyDays} days &times; {DEMO.occupants} occupant
+                  Your tenant-days = {DEMO.occupancyDays} days &times; {DEMO.occupants} occupant
                 </span>
                 <span className="font-semibold text-secondary-900 whitespace-nowrap tabular-nums">
                   {DEMO.occupancyDays * DEMO.occupants}
@@ -110,20 +129,20 @@ const DemoBill = () => {
               </div>
 
               <div className="flex items-center justify-between px-4 py-3">
-                <span className="text-secondary-700">Total person-days for this bill (all tenants combined)</span>
+                <span className="text-secondary-700">Total tenant-days for this bill (all tenants combined)</span>
                 <span className="font-medium text-secondary-900 whitespace-nowrap tabular-nums">{DEMO.totalPersonDays}</span>
               </div>
 
               {otherPersonDays > 0 && (
                 <div className="flex items-center justify-between px-4 py-3 text-secondary-500">
-                  <span>Other tenants' person-days ({DEMO.totalPersonDays} &minus; {DEMO.occupancyDays})</span>
+                  <span>Other tenants' tenant-days ({DEMO.totalPersonDays} &minus; {DEMO.occupancyDays})</span>
                   <span className="whitespace-nowrap tabular-nums">{otherPersonDays}</span>
                 </div>
               )}
 
               <div className="flex items-center justify-between px-4 py-3 bg-secondary-50">
                 <span className="text-secondary-700">
-                  Your share = {DEMO.occupancyDays} &divide; {DEMO.totalPersonDays} person-days
+                  Your share = {DEMO.occupancyDays} &divide; {DEMO.totalPersonDays} tenant-days
                 </span>
                 <span className="font-semibold text-secondary-900 whitespace-nowrap tabular-nums">{DEMO.percentage}%</span>
               </div>

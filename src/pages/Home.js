@@ -12,6 +12,7 @@ import {
   Mail,
   UserX,
   ChevronDown,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -76,6 +77,19 @@ const howItWorks = [
     title: 'Your tenant sees the math',
     description: 'A link, no login, no account — just their share and exactly how it was calculated. They confirm; you\'re done.'
   }
+];
+
+const recentlyShipped = [
+  'Per-property Pro pricing',
+  'Passwordless sign-in with Google',
+  'Automatic monthly rent generation',
+  'Overdue payment reminders, sent automatically',
+];
+
+const workingOn = [
+  'Smarter ways to catch a bill before you even enter it',
+  'More visibility into who\'s paid and who hasn\'t',
+  'Your rental business, at a glance',
 ];
 
 const faqGroups = [
@@ -153,11 +167,11 @@ const BreakdownMockup = () => (
       </div>
       <div className="divide-y divide-secondary-100">
         <div className="flex justify-between px-3 py-2">
-          <span className="text-secondary-600">Your person-days = 30 days &times; 1</span>
+          <span className="text-secondary-600">Your tenant-days = 30 days &times; 1</span>
           <span className="font-medium text-secondary-900 tabular-nums">30</span>
         </div>
         <div className="flex justify-between px-3 py-2 bg-secondary-50">
-          <span className="text-secondary-700">Your share = 30 &divide; 90 person-days</span>
+          <span className="text-secondary-700">Your share = 30 &divide; 90 tenant-days</span>
           <span className="font-semibold text-secondary-900 tabular-nums">33.33%</span>
         </div>
       </div>
@@ -347,6 +361,38 @@ const Home = () => {
                 </div>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      {/* What's new — momentum proof (shipped) plus a deliberately vague look-ahead,
+          no dates or named features so we're never selling a future we haven't built */}
+      <section className="py-20 bg-white">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-3xl font-bold text-secondary-900 mb-10 text-center">Always moving</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="card">
+              <h3 className="text-sm font-semibold text-secondary-500 uppercase tracking-wide mb-4">Recently shipped</h3>
+              <ul className="space-y-3">
+                {recentlyShipped.map((item) => (
+                  <li key={item} className="flex items-start space-x-2">
+                    <CheckCircle className="w-4 h-4 text-primary-500 mt-0.5 flex-shrink-0" />
+                    <span className="text-secondary-700">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="card">
+              <h3 className="text-sm font-semibold text-secondary-500 uppercase tracking-wide mb-4">What we're working on</h3>
+              <ul className="space-y-3">
+                {workingOn.map((item) => (
+                  <li key={item} className="flex items-start space-x-2">
+                    <Sparkles className="w-4 h-4 text-secondary-400 mt-0.5 flex-shrink-0" />
+                    <span className="text-secondary-600">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         </div>
       </section>
