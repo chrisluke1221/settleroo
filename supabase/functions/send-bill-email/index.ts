@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Email service not configured' }, 500);
     }
 
-    const appUrl = Deno.env.get('APP_URL') ?? 'https://roomietab.netlify.app';
+    const appUrl = Deno.env.get('APP_URL') ?? 'https://settleroo.netlify.app';
     const billLink = `${appUrl}/bill/${split.access_token}`;
 
     const billType = escapeHtml(split.bills.bill_type);
@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: Deno.env.get('EMAIL_FROM') ?? 'RoomTab <onboarding@resend.dev>',
+        from: Deno.env.get('EMAIL_FROM') ?? 'Settleroo <onboarding@resend.dev>',
         to: tenantEmail,
         subject: `Your ${split.bills.bill_type} bill: $${Number(split.owed_amount).toFixed(2)} due`,
         html,
