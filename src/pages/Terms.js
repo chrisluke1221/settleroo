@@ -1,7 +1,7 @@
 import React from 'react';
 import { Helmet } from 'react-helmet-async';
 
-const TITLE = 'Terms of Service — RoomieTab';
+const TITLE = 'Terms of Service — Settleroo';
 const LAST_UPDATED = '20 July 2026';
 
 // Baseline terms — same reasoning as Privacy.js: real coverage now, refined
@@ -20,7 +20,7 @@ const Terms = () => (
         <section>
           <h2 className="text-lg font-semibold text-secondary-900 mb-2">The service</h2>
           <p>
-            RoomieTab helps landlords split shared bills and rent by occupancy across tenants, and share
+            Settleroo helps landlords split shared bills and rent by occupancy across tenants, and share
             the breakdown with tenants via a no-login link. You're responsible for the accuracy of the
             property, tenant, and bill information you enter.
           </p>
@@ -30,7 +30,7 @@ const Terms = () => (
           <h2 className="text-lg font-semibold text-secondary-900 mb-2">Your account</h2>
           <p>
             You must provide a real, working email address and keep your account credentials secure.
-            You're responsible for activity under your account. Don't use RoomieTab for a property you
+            You're responsible for activity under your account. Don't use Settleroo for a property you
             don't have the right to manage, or to mislead a tenant about what they owe.
           </p>
         </section>
@@ -46,9 +46,9 @@ const Terms = () => (
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-secondary-900 mb-2">What RoomieTab doesn't do</h2>
+          <h2 className="text-lg font-semibold text-secondary-900 mb-2">What Settleroo doesn't do</h2>
           <p>
-            RoomieTab calculates and displays what each tenant owes — it does not collect, hold, or
+            Settleroo calculates and displays what each tenant owes — it does not collect, hold, or
             transfer rent or bill payments on anyone's behalf. Any money changes hands directly between
             landlord and tenant, outside the product.
           </p>
@@ -57,7 +57,7 @@ const Terms = () => (
         <section>
           <h2 className="text-lg font-semibold text-secondary-900 mb-2">No warranty</h2>
           <p>
-            RoomieTab is provided "as is." We work hard to keep the splitting math correct — every split is
+            Settleroo is provided "as is." We work hard to keep the splitting math correct — every split is
             designed to sum exactly to the bill total — but we don't guarantee the service will be
             uninterrupted or error-free, and we're not liable for decisions made based on figures the
             product calculates.
@@ -67,7 +67,7 @@ const Terms = () => (
         <section>
           <h2 className="text-lg font-semibold text-secondary-900 mb-2">Changes</h2>
           <p>
-            We may update these terms or the product itself as RoomieTab develops. Material changes will be
+            We may update these terms or the product itself as Settleroo develops. Material changes will be
             reflected here with an updated date.
           </p>
         </section>

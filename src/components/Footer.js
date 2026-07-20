@@ -20,7 +20,7 @@ const Footer = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex flex-wrap justify-center items-center gap-x-4 gap-y-2 text-sm">
-            <span className="font-semibold text-secondary-900">RoomieTab</span>
+            <span className="font-semibold text-secondary-900">Settleroo</span>
             <Link to="/" className="text-secondary-500 hover:text-secondary-900 transition-colors duration-200">
               Home
             </Link>
@@ -42,7 +42,7 @@ const Footer = () => {
             </a>
           </div>
           <p className="text-secondary-400 text-xs text-center">
-            © {new Date().getFullYear()} RoomieTab. Made in Australia 🇦🇺
+            © {new Date().getFullYear()} Settleroo. Made in Australia 🇦🇺
           </p>
         </div>
       </div>

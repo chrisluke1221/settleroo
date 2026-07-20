@@ -1,5 +1,7 @@
 # RoomieTab v1.5 — Product Initiation Document (PID)
 
+> *Historical document, written before the 2026-07-20 rename to Settleroo — "RoomieTab" reflects the product name at the time.*
+
 **Status:** Approved for build · **Owner:** Chris (founder/operator) · **Date:** 2026-07-15
 **Companion doc:** `2026-07-15-roomietab-v1-product-design-critique.md` (P0/P1/P2 fixes to the existing code — read it first; this PID assumes those fixes land as Increment 1).
 **Audience:** Claude Code. Every requirement here is written to be implemented against the existing React + Supabase codebase.

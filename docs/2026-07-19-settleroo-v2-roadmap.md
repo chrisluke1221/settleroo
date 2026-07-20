@@ -1,4 +1,4 @@
-# RoomieTab v2 Roadmap (Refined) — Monetization, Operator CRM, and the AI Wedge
+# Settleroo v2 Roadmap (Refined) — Monetization, Operator CRM, and the AI Wedge
 
 **Status:** Phase A shipped ([PR #7](https://github.com/chrisluke1221/roomtab/pull/7), 2026-07-18) · Phases B–E + M planned, not started
 **Owner:** Chris (founder/operator) · **Written:** 2026-07-17 · **Refined:** 2026-07-19 (rev 2)
@@ -34,7 +34,7 @@
 
 | # | Assumption | Status / test | If false |
 |---|---|---|---|
-| A1 | Operators pay because RoomieTab removes the whole bill→settled loop, and **AI ingestion is the effort-killer that makes it worth per-property pricing**. | Test in Phase D via the D→E gate (ingestion usage + draft-accept rate). | AI is a retention perk, not the acquisition wedge → lean harder on the split-engine + chase loop in positioning. |
+| A1 | Operators pay because Settleroo removes the whole bill→settled loop, and **AI ingestion is the effort-killer that makes it worth per-property pricing**. | Test in Phase D via the D→E gate (ingestion usage + draft-accept rate). | AI is a retention perk, not the acquisition wedge → lean harder on the split-engine + chase loop in positioning. |
 | A2 | ~~Pricing/ICP~~ **RESOLVED 2026-07-19**: per-property (~A$10/door), ICP = 2–10 property operators. | Decided after Fable critique. Validate the price point in the 10 operator interviews (Phase M pre-work). | If interviews reject per-property, revisit the metric before Stripe hardens in Phase C. |
 | A3 | "Portability via read-only MCP" is a **retention perk**, not the wedge (per Fable). | Phase D: do Pro operators connect + query the MCP more than once? | Confirms Fable — keep MCP as a second-act, never build write-tools. |
 | A4 | **Silent extraction errors (confident + wrong) can be driven near zero** with ensemble + plausibility + per-provider templates — the precondition for ever allowing auto-send. | Phase D eval: measure calibration + silent-error rate on the golden set. | No auto-send ever ships; ingestion stays permanently human-reviewed (still valuable). |
@@ -52,14 +52,14 @@ Gaps identified 2026-07-17 (checked against code):
 - Launch blockers: Resend sandbox email limitation, Google OAuth not enabled (delete-property UI shipped in Phase A).
 
 ### Founder decisions (locked)
-1. **Pricing:** Free "Starter" (1 property, up to 4 tenants, "Powered by RoomieTab" branding, no AI) vs **Pro at ~A$10 / property / month** (annual ~2 months free), unlocking unlimited tenants/bills, branding removal, and all AI. **No bills/month cap on any tier.** Exact numbers live in the `plans` table (data, not code).
+1. **Pricing:** Free "Starter" (1 property, up to 4 tenants, "Powered by Settleroo" branding, no AI) vs **Pro at ~A$10 / property / month** (annual ~2 months free), unlocking unlimited tenants/bills, branding removal, and all AI. **No bills/month cap on any tier.** Exact numbers live in the `plans` table (data, not code).
 2. **ICP:** 2–10 property rent-by-room operators. All new marketing copy and onboarding target this persona.
 3. **MCP:** ship a **read-only** MCP server as a Pro feature — positioned as a retention perk ("your ledger, readable by your AI"), not the core wedge.
 4. **AI flagship = redesigned email/inbox ingestion** (Phase D) — the effort-killer that anchors per-property pricing.
 5. **Stripe stays P1:** manual (operator-granted) plans first; Stripe Checkout lands in Phase C, wired to the `plans` table.
 
 ### The USP guardrail for every AI feature
-**"AI at the edges, deterministic math in the middle."** AI reads bills, drafts messages, answers questions, exports summaries — it **never** computes a split or mutates money state without explicit human confirm. This is the trust story ("ChatGPT guesses; RoomieTab proves") and it is **enforced, not just stated**: see the repo root `CLAUDE.md` Always/Ask/Never block and the guardrail tests in Phase D. The AI/ingestion service role has no write grant to split/amount tables; AI paths may only `INSERT` a `status='draft'` row with non-authoritative amounts until a human confirms.
+**"AI at the edges, deterministic math in the middle."** AI reads bills, drafts messages, answers questions, exports summaries — it **never** computes a split or mutates money state without explicit human confirm. This is the trust story ("ChatGPT guesses; Settleroo proves") and it is **enforced, not just stated**: see the repo root `CLAUDE.md` Always/Ask/Never block and the guardrail tests in Phase D. The AI/ingestion service role has no write grant to split/amount tables; AI paths may only `INSERT` a `status='draft'` row with non-authoritative amounts until a human confirms.
 
 ---
 
@@ -69,7 +69,7 @@ Gaps identified 2026-07-17 (checked against code):
 |---|---|---|---|
 | Split engine, tenant no-login links, recurring rent | ✓ (1 property) | ✓ all properties | n/a |
 | Unlimited tenants / bills | — (1 property, ≤4 tenants) | ✓ | n/a |
-| Tenant page branding | "Powered by RoomieTab" (viral loop) | removable | n/a |
+| Tenant page branding | "Powered by Settleroo" (viral loop) | removable | n/a |
 | AI ingestion — inbox/email-in + plausibility (R7) | — | ✓ | n/a |
 | MCP server / "ask your books" (read-only) | — | ✓ | ✓ (own books) |
 | Arrears autopilot + confidence-gated auto-send (Phase E) | — | ✓ | n/a |
@@ -120,7 +120,7 @@ Stripe Checkout + customer portal + webhook → `subscriptions` (source=stripe),
 **Outcome target:** landing → signup conversion instrumented and improved; the primary CTA a stranger sees is "Get started free," not "Login."
 
 1. **Nav IA:** replace the lone "Pricing" link with anchor nav (Product / How it works · Pricing · FAQ), a primary filled **"Get started free"** button, and a secondary text **"Log in."**
-2. **Hero:** put the USP on the page — "ChatGPT guesses; RoomieTab proves" (currently buried in internal docs). Lead with the operator pain ("collecting from a full house of tenants"), mechanism second.
+2. **Hero:** put the USP on the page — "ChatGPT guesses; Settleroo proves" (currently buried in internal docs). Lead with the operator pain ("collecting from a full house of tenants"), mechanism second.
 3. **Live demo:** ship a public, no-login **example tenant bill** as an interactive demo (the product's best unused asset). Link it from the hero.
 4. **Trust signals:** logos/testimonials placeholder, "N bills split," a founder note. Add a footer (currently missing).
 5. **Copy hygiene:** remove stack-leak language ("Supabase," "row-level security") from user-facing copy — say "bank-grade isolation," not the vendor name.
@@ -154,7 +154,7 @@ Stripe Checkout + customer portal + webhook → `subscriptions` (source=stripe),
 
 **5. Confirm — a 3-second glance, not a form.**
    - Show extracted values **overlaid on the bill image**, total big, **confidence colored per field** (green = high, amber = low). The eye goes to the amber field; confirm with one tap, fix with one tap.
-   - **Email-native confirm loop** for non-app-native operators: RoomieTab replies to the forwarded bill with the summary + a one-click "Confirm & send to tenants" button — the loop happens in the inbox they already use.
+   - **Email-native confirm loop** for non-app-native operators: Settleroo replies to the forwarded bill with the summary + a one-click "Confirm & send to tenants" button — the loop happens in the inbox they already use.
    - On confirm → hand off to the **deterministic engine** (sole splitter).
 
 **6. Provenance — turn extraction into the dispute-killer.**

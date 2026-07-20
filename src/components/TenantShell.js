@@ -12,7 +12,7 @@ const TenantShell = ({ propertyName, landlordName, children }) => (
     </header>
     <main className="flex-1 flex items-center justify-center px-4 py-12">{children}</main>
     <footer className="border-t border-secondary-200 py-4 text-center text-xs text-secondary-400">
-      Powered by RoomieTab
+      Powered by Settleroo
     </footer>
   </div>
 );

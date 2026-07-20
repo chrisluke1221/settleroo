@@ -759,7 +759,7 @@ export const PropertyProvider = ({ children }) => {
     const property = await createProperty({
       name: 'Sample Share House',
       address: '12 Example Street, Melbourne',
-      description: 'A sample property showing how RoomieTab splits a bill fairly — delete any time.',
+      description: 'A sample property showing how Settleroo splits a bill fairly — delete any time.',
     });
 
     const alice = await createTenant({

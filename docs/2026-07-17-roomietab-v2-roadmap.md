@@ -1,4 +1,6 @@
-> ⚠️ **SUPERSEDED (2026-07-19).** This version is kept as history only. The canonical, refined roadmap is **`2026-07-19-roomietab-v2-roadmap.md`** — read that one. It folds in the fixes from `2026-07-19-roomietab-v2-karpathy-review.md` (North Star + outcome targets, a numeric D→E gate, a real AI-extraction verifier, the USP guardrail enforced in code, and an assumptions/pricing block).
+> ⚠️ **SUPERSEDED (2026-07-19).** This version is kept as history only. The canonical, refined roadmap is **`2026-07-19-settleroo-v2-roadmap.md`** — read that one. It folds in the fixes from `2026-07-19-roomietab-v2-karpathy-review.md` (North Star + outcome targets, a numeric D→E gate, a real AI-extraction verifier, the USP guardrail enforced in code, and an assumptions/pricing block).
+>
+> *(This document itself predates the RoomieTab → Settleroo rename and is left as a historical snapshot — its "RoomieTab" references reflect the product's name at the time it was written.)*
 
 # RoomieTab v2 Roadmap — Monetization, Operator CRM, and the AI Wedge
 
