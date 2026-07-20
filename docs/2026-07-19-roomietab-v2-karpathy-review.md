@@ -1,5 +1,7 @@
 # RoomieTab v2 Roadmap — Karpathy 3-Layer Review
 
+> *Historical document, written before the 2026-07-20 rename to Settleroo — "RoomieTab" reflects the product name at the time.*
+
 **Reviewed:** 2026-07-19 · **Doc under review:** `2026-07-17-roomietab-v2-roadmap.md` · **Lens:** Karpathy Spec / Verifier / Environment
 **Verdict:** B+ / A−. Above the median PRD by a distance. Two real gaps hold it back from an A, and they happen to be the two highest-leverage things to fix before dev.
 

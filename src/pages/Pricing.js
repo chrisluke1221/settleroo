@@ -9,7 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 // on is_public plans) rather than hardcoded copy, so repricing is a data
 // change — the operator edits the row, no deploy.
 
-const TITLE = 'Pricing — RoomieTab';
+const TITLE = 'Pricing — Settleroo';
 
 // Display order + labels for the keys inside plans.limits. A numeric null
 // renders as Unlimited; booleans as included/not-included.
@@ -17,7 +17,7 @@ const FEATURE_ROWS = [
   { key: 'max_properties', label: 'Properties' },
   { key: 'max_active_tenants', label: 'Active tenants' },
   { key: '_attachments', label: 'Bill attachments' },
-  { key: 'branding_removable', label: 'Remove "Powered by RoomieTab" from tenant pages' },
+  { key: 'branding_removable', label: 'Remove "Powered by Settleroo" from tenant pages' },
   // The three AI features are still building — one honest combined row reads
   // better than three "coming soon" rows selling futures on a pricing table.
   { key: '_ai_features', label: 'Early access to AI features as they ship' },
@@ -34,7 +34,7 @@ const faqs = [
   },
   {
     q: 'Do my tenants ever pay for anything?',
-    a: 'No. Tenants never need an account and never pay RoomieTab anything. Plans are for landlords only.',
+    a: 'No. Tenants never need an account and never pay Settleroo anything. Plans are for landlords only.',
   },
   {
     q: 'Is my data private?',
@@ -157,7 +157,7 @@ const Pricing = () => {
                   isAuthenticated ? (
                     <>
                       <a
-                        href="mailto:chrisluke1221@gmail.com?subject=Upgrade%20to%20RoomieTab%20Pro"
+                        href="mailto:chrisluke1221@gmail.com?subject=Upgrade%20to%20Settleroo%20Pro"
                         className="btn-primary w-full block text-center"
                       >
                         Email me — I'll set you up within 24h

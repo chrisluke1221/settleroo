@@ -1,5 +1,7 @@
 # RoomieTab v1 — Product & Design Critique + Fix Spec
 
+> *Historical document, written before the 2026-07-20 rename to Settleroo — "RoomieTab" reflects the product name at the time.*
+
 **Scope:** Full audit of the vibe-coded v1 (`Product build/roomtab`, React/CRA + Supabase) — code review of all 2,094 lines + live walkthrough on localhost at desktop (1440px) and mobile (390px).
 **Companion doc:** `2026-07-15-roomietab-prd-teardown.md` (strategy, USP, roadmap).
 **Verdict:** Strong skeleton for one week of vibe coding — the calculation-transparency instinct is exactly right and the edge function does auth properly. But it is not chargeable yet: the split math can produce totals that don't sum, paid history silently rewrites itself, move-outs don't exist in the UI, and the visual identity says "roommate side-project," not "trust me with your money." Fix the P0s before showing this to a single prospective customer.

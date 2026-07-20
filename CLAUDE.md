@@ -1,10 +1,10 @@
-# RoomieTab — Claude Code Entry Point
+# Settleroo — Claude Code Entry Point
 
-RoomieTab is a React + Supabase web app for landlords who rent by the room: it splits shared bills (power/water/rent) by the exact days each tenant occupied a property, and chases tenants to settled via no-login links. Live at roomietab.netlify.app.
+Settleroo is a React + Supabase web app for landlords who rent by the room: it splits shared bills (power/water/rent) by the exact days each tenant occupied a property, and chases tenants to settled via no-login links. Live at roomietab.netlify.app.
 
 ## ▶ Where to resume (read in this order)
 
-1. **`docs/2026-07-19-roomietab-v2-roadmap.md`** — the CANONICAL roadmap/spec. Read this first. (It supersedes `2026-07-17-roomietab-v2-roadmap.md`, which is kept only as history.)
+1. **`docs/2026-07-19-settleroo-v2-roadmap.md`** — the CANONICAL roadmap/spec. Read this first. (It supersedes `2026-07-17-roomietab-v2-roadmap.md`, which is kept only as history.)
 2. `docs/2026-07-19-roomietab-v2-karpathy-review.md` — the spec-quality review the refined roadmap answers.
 3. `docs/2026-07-15-roomietab-v1.5-PRD.md` — prior build order (context).
 4. `docs/2026-07-19-roomietab-fable-product-critique.md` — product/pricing/positioning critique (informs the OPEN pricing question).

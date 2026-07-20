@@ -1,5 +1,7 @@
 # RoomieTab — Product & Positioning Critique (Fable review)
 
+> *Historical document, written before the 2026-07-20 rename to Settleroo — "RoomieTab" reflects the product name at the time.*
+
 **Reviewed:** 2026-07-19 · **Reviewer lens:** founding-PM / seed-partner critique
 **Inputs:** `2026-07-17-roomietab-v2-roadmap.md`, `2026-07-19-roomietab-v2-karpathy-review.md`, `src/pages/Home.js`, `src/pages/Pricing.js`, `src/components/Header.js`, live site
 **Builds on** the Karpathy review (spec quality). This doc is about the *business*: site, price, ICP, wedge.

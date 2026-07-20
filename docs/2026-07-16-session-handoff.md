@@ -1,5 +1,7 @@
 # Session Handoff — 2026-07-16
 
+> *Historical document, written before the 2026-07-20 rename to Settleroo — "RoomieTab" reflects the product name at the time.*
+
 Read this first in a new session, alongside `2026-07-15-roomietab-v1.5-PRD.md`
 and `2026-07-15-roomietab-v1-product-design-critique.md`. It exists because
 the prior session's context window ran out mid-project — everything below is

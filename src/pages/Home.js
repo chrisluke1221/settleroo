@@ -15,9 +15,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
-const TITLE = 'RoomieTab — From bill to settled, without you.';
+const TITLE = 'Settleroo — From bill to settled, without you.';
 const DESCRIPTION =
-  'RoomieTab is the settlement layer for rent-by-the-room. It splits shared bills to the exact day each tenant occupied the property and chases them to settled — no spreadsheets, no awkward group chats.';
+  'Settleroo is the settlement layer for rent-by-the-room. It splits shared bills to the exact day each tenant occupied the property and chases them to settled — no spreadsheets, no awkward group chats.';
 
 const features = [
   {
@@ -68,7 +68,7 @@ const howItWorks = [
   },
   {
     icon: Calculator,
-    title: 'RoomieTab splits it fairly',
+    title: 'Settleroo splits it fairly',
     description: 'By the exact number of days each tenant lived there — move-ins, move-outs, and vacant rooms all counted.'
   },
   {
@@ -83,22 +83,22 @@ const faqGroups = [
     heading: 'Before you sign up',
     items: [
       {
-        question: 'What problem does RoomieTab actually solve?',
+        question: 'What problem does Settleroo actually solve?',
         answer:
-          "Splitting a shared bill fairly across a room-by-room rental is tedious and creates arguments when the math isn't shown. RoomieTab does the math for you — by exact occupancy days, not a rough guess — and shows every tenant exactly how their share was worked out."
+          "Splitting a shared bill fairly across a room-by-room rental is tedious and creates arguments when the math isn't shown. Settleroo does the math for you — by exact occupancy days, not a rough guess — and shows every tenant exactly how their share was worked out."
       },
       {
         question: 'Do I have to pay for this?',
         answer:
-          "RoomieTab is free to start — one property, no credit card required. Running more than one? Pro is priced per property, so you only pay for the doors you actually manage."
+          "Settleroo is free to start — one property, no credit card required. Running more than one? Pro is priced per property, so you only pay for the doors you actually manage."
       },
       {
         question: 'Does my tenant need to create an account?',
         answer:
-          "No. Tenants get a no-login link to view their bill breakdown and confirm payment. RoomieTab never requires a tenant to sign up for anything."
+          "No. Tenants get a no-login link to view their bill breakdown and confirm payment. Settleroo never requires a tenant to sign up for anything."
       },
       {
-        question: 'How does RoomieTab split shared bills fairly?',
+        question: 'How does Settleroo split shared bills fairly?',
         answer:
           "Every utility bill is split by exactly how many days each tenant occupied the property during the billing period — move-ins, move-outs, and vacant rooms are all accounted for. The math is deterministic and shown to every tenant, not an AI guess."
       },
@@ -115,12 +115,12 @@ const faqGroups = [
       {
         question: 'What if a tenant\'s rent changes partway through a bill period?',
         answer:
-          "Rent is tracked separately from utility bills, with its own effective-dated rate. If a rent change lands mid-period, RoomieTab prorates the old and new rate across the exact days each applied — no manual recalculation."
+          "Rent is tracked separately from utility bills, with its own effective-dated rate. If a rent change lands mid-period, Settleroo prorates the old and new rate across the exact days each applied — no manual recalculation."
       },
       {
         question: 'Can I still edit a bill after I\'ve sent it to a tenant?',
         answer:
-          "Once a bill has been sent, its split is locked so a tenant never sees the number change under them. If your tenant roster changes afterward, RoomieTab flags it and you can explicitly reissue — nothing updates silently."
+          "Once a bill has been sent, its split is locked so a tenant never sees the number change under them. If your tenant roster changes afterward, Settleroo flags it and you can explicitly reissue — nothing updates silently."
       },
     ],
   },
@@ -202,7 +202,7 @@ const Home = () => {
     '@graph': [
       {
         '@type': 'SoftwareApplication',
-        name: 'RoomieTab',
+        name: 'Settleroo',
         description: DESCRIPTION,
         applicationCategory: 'BusinessApplication',
         operatingSystem: 'Web',
@@ -248,7 +248,7 @@ const Home = () => {
                 Splitting the power bill shouldn't take your Sunday afternoon.
               </h1>
               <p className="text-xl text-secondary-600 mb-4 max-w-xl mx-auto lg:mx-0">
-                RoomieTab splits every shared bill to the exact day each tenant lived there, shows
+                Settleroo splits every shared bill to the exact day each tenant lived there, shows
                 them the math on a no-login link, and chases it to settled.
               </p>
               <p className="text-sm text-secondary-500 mb-8">Free for your first property. No credit card.</p>
@@ -325,7 +325,7 @@ const Home = () => {
               Built for landlords who rent by the room
             </h2>
             <p className="text-xl text-secondary-600 max-w-2xl mx-auto">
-              RoomieTab handles the whole loop — bill in, split fairly, chased to settled — so your Sunday
+              Settleroo handles the whole loop — bill in, split fairly, chased to settled — so your Sunday
               afternoon stays yours.
             </p>
           </div>
@@ -384,7 +384,7 @@ const Home = () => {
             Ready to get organized?
           </h2>
           <p className="text-xl text-primary-100 mb-2 max-w-2xl mx-auto">
-            Add your properties and tenants, and let RoomieTab handle the bill splitting.
+            Add your properties and tenants, and let Settleroo handle the bill splitting.
           </p>
           <p className="text-sm text-primary-200 mb-8">Free for your first property. No credit card.</p>
           <Link

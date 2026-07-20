@@ -5,7 +5,7 @@ import { Receipt, Calendar, Users, CalendarDays, ArrowRight, Sparkles } from 'lu
 import TenantShell from '../components/TenantShell';
 import Money from '../components/Money';
 
-const TITLE = 'See a real bill breakdown — RoomieTab';
+const TITLE = 'See a real bill breakdown — Settleroo';
 
 // A public, no-login demo of the exact screen a tenant sees — reusing the
 // real TenantShell/Money components for visual fidelity, fed static example

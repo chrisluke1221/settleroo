@@ -1,5 +1,5 @@
 {
-  "name": "roomietab",
+  "name": "settleroo",
   "version": "1.0.0",
   "description": "The settlement layer for rent-by-the-room — landlord tool for splitting shared bills by occupancy.",
   "private": true,

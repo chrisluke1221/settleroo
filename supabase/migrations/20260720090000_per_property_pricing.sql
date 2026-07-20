@@ -1,4 +1,4 @@
--- Rev 2 of the v2 roadmap (docs/2026-07-19-roomietab-v2-roadmap.md), founder
+-- Rev 2 of the v2 roadmap (docs/2026-07-19-settleroo-v2-roadmap.md), founder
 -- decisions locked 2026-07-19 after the Fable positioning critique:
 --   1. Pro reprices from a flat $19/mo to a per-property metric (~A$10/door/mo,
 --      ~A$100/door/yr — value scales with doors under management, so the

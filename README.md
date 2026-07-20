@@ -1,7 +1,7 @@
-# RoomieTab — From bill to settled, without you.
+# Settleroo — From bill to settled, without you.
 
-RoomieTab is the settlement layer for rent-by-the-room. A landlord adds a property, its tenants, and a
-bill — RoomieTab splits it to the exact day each tenant occupied the property (move-ins, move-outs, and
+Settleroo is the settlement layer for rent-by-the-room. A landlord adds a property, its tenants, and a
+bill — Settleroo splits it to the exact day each tenant occupied the property (move-ins, move-outs, and
 vacant rooms all accounted for) and gives each tenant a no-login link showing exactly how their share was
 calculated.
 

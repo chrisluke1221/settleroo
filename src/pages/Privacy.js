@@ -1,7 +1,7 @@
 import React from 'react';
 import { Helmet } from 'react-helmet-async';
 
-const TITLE = 'Privacy Policy — RoomieTab';
+const TITLE = 'Privacy Policy — Settleroo';
 const LAST_UPDATED = '20 July 2026';
 
 // Baseline, plain-language privacy policy — not a substitute for legal
@@ -32,7 +32,7 @@ const Privacy = () => (
         <section>
           <h2 className="text-lg font-semibold text-secondary-900 mb-2">Your tenants</h2>
           <p>
-            Tenants never create a RoomieTab account. They access their own bill share through a single,
+            Tenants never create a Settleroo account. They access their own bill share through a single,
             revocable link that shows only their own information — never another tenant's, and never your
             full property or financial overview. You can revoke a tenant's link at any time.
           </p>
@@ -59,7 +59,7 @@ const Privacy = () => (
         <section>
           <h2 className="text-lg font-semibold text-secondary-900 mb-2">Payments</h2>
           <p>
-            RoomieTab never handles a tenant's rent or bill payment — it tracks who owes what and lets a
+            Settleroo never handles a tenant's rent or bill payment — it tracks who owes what and lets a
             landlord mark a split as paid. Pro plan upgrades are currently arranged directly by email; we
             don't collect or store card details ourselves. As self-serve billing is introduced, it will be
             handled by Stripe, and this section will be updated accordingly.
