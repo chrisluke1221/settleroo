@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
-    const appUrl = Deno.env.get('APP_URL') ?? 'https://roomietab.netlify.app';
+    const appUrl = Deno.env.get('APP_URL') ?? 'https://settleroo.netlify.app';
 
     const admin = createClient(supabaseUrl, serviceRoleKey);
     const today = new Date().toISOString().slice(0, 10);
@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: Deno.env.get('EMAIL_FROM') ?? 'RoomieTab <onboarding@resend.dev>',
+          from: Deno.env.get('EMAIL_FROM') ?? 'Settleroo <onboarding@resend.dev>',
           to: tenantEmail,
           subject: `Reminder: your ${split.bills.bill_type} bill is overdue`,
           html,
