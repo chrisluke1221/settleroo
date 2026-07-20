@@ -18,9 +18,9 @@ const FEATURE_ROWS = [
   { key: 'max_active_tenants', label: 'Active tenants' },
   { key: '_attachments', label: 'Bill attachments' },
   { key: 'branding_removable', label: 'Remove "Powered by RoomieTab" from tenant pages' },
-  { key: 'email_ingestion', label: 'Email-in AI bill ingestion (coming soon)' },
-  { key: 'mcp_access', label: 'AI assistant access — MCP (coming soon)' },
-  { key: 'eofy_export', label: 'EOFY tax export (coming soon)' },
+  // The three AI features are still building — one honest combined row reads
+  // better than three "coming soon" rows selling futures on a pricing table.
+  { key: '_ai_features', label: 'Early access to AI features as they ship' },
 ];
 
 const faqs = [
@@ -38,7 +38,7 @@ const faqs = [
   },
   {
     q: 'Is my data private?',
-    a: 'Yes. Every account is isolated with row-level security — only you can see your properties, tenants, and bills. Tenant links show a tenant only their own share, nothing else.',
+    a: 'Yes. Every account is private by design — only you can see your properties, tenants, and bills, enforced at the database level, not just in the app. Tenant links show a tenant only their own share, nothing else.',
   },
 ];
 
@@ -83,11 +83,12 @@ const Pricing = () => {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-10">
           <h1 className="text-4xl font-bold text-secondary-900 mb-4">
-            Cheaper than one hour of an agent's time.
+            Less than a week's rent from one room — for the whole year.
           </h1>
           <p className="text-lg text-secondary-600 max-w-2xl mx-auto">
-            Start free with your first property. Upgrade when the portfolio grows — every plan
-            includes the full split engine and no-login tenant links.
+            Start free with your first property. Pro is priced per property, so you only pay for the
+            doors you actually manage — every plan includes the full split engine and no-login tenant
+            links.
           </p>
         </div>
 
@@ -137,7 +138,12 @@ const Pricing = () => {
 
                 <ul className="space-y-3 mb-6">
                   {FEATURE_ROWS.map((row) => {
-                    const value = row.key === '_attachments' ? true : plan.limits?.[row.key];
+                    const value =
+                      row.key === '_attachments'
+                        ? true
+                        : row.key === '_ai_features'
+                        ? plan.limits?.email_ingestion
+                        : plan.limits?.[row.key];
                     return (
                       <li key={row.key} className="flex items-center justify-between text-sm">
                         <span className="text-secondary-600">{row.label}</span>
@@ -149,12 +155,15 @@ const Pricing = () => {
 
                 {isPaid ? (
                   isAuthenticated ? (
-                    <a
-                      href="mailto:chrisluke1221@gmail.com?subject=Upgrade%20to%20RoomieTab%20Pro"
-                      className="btn-primary w-full block text-center"
-                    >
-                      Upgrade to {plan.name}
-                    </a>
+                    <>
+                      <a
+                        href="mailto:chrisluke1221@gmail.com?subject=Upgrade%20to%20RoomieTab%20Pro"
+                        className="btn-primary w-full block text-center"
+                      >
+                        Email me — I'll set you up within 24h
+                      </a>
+                      <p className="text-xs text-secondary-500 text-center mt-2">Signed, Chris — no self-serve checkout yet.</p>
+                    </>
                   ) : (
                     <Link to="/login" className="btn-primary w-full block text-center">
                       Start with {plan.name}

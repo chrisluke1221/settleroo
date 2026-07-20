@@ -9,7 +9,10 @@ import Properties from './pages/Properties';
 import PropertyDetail from './pages/PropertyDetail';
 import Login from './pages/Login';
 import Pricing from './pages/Pricing';
+import Privacy from './pages/Privacy';
+import Terms from './pages/Terms';
 import TenantBillView from './pages/TenantBillView';
+import DemoBill from './pages/DemoBill';
 import UpgradeModal from './components/UpgradeModal';
 import { PropertyProvider } from './contexts/PropertyContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -40,7 +43,10 @@ function AppRoutes() {
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
       <Route path="/pricing" element={<Pricing />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
       <Route path="/bill/:token" element={<TenantBillView />} />
+      <Route path="/demo-bill" element={<DemoBill />} />
       <Route
         path="/dashboard"
         element={
@@ -74,7 +80,7 @@ function AppRoutes() {
 // standalone shell.
 const AppShell = () => {
   const location = useLocation();
-  const isTenantRoute = location.pathname.startsWith('/bill/');
+  const isTenantRoute = location.pathname.startsWith('/bill/') || location.pathname === '/demo-bill';
 
   if (isTenantRoute) {
     return <AppRoutes />;

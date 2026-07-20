@@ -37,18 +37,18 @@ const features = [
   },
   {
     icon: Shield,
-    title: 'Secure & Private',
-    description: 'Your data is protected by row-level security — only you can see your properties.'
+    title: 'Private by Design',
+    description: 'Tenants see only their own share, never each other\'s. Your properties are yours alone.'
   },
   {
     icon: Zap,
-    title: 'Real-time Sync',
-    description: 'Data is stored in Supabase, so it persists and syncs across devices.'
+    title: 'Works Everywhere',
+    description: 'Phone at the property, laptop at home — always the same numbers, always up to date.'
   },
   {
     icon: CheckCircle,
-    title: 'Payment Status',
-    description: 'Mark tenants as paid, pending, or overdue at a glance.'
+    title: 'Chased to Settled',
+    description: 'Overdue reminders go out on their own, so you\'re never the one nagging a tenant to pay.'
   }
 ];
 
@@ -90,7 +90,7 @@ const faqGroups = [
       {
         question: 'Do I have to pay for this?',
         answer:
-          "RoomieTab is free to start — one property, no credit card required. Paid plans for landlords with more properties are coming soon."
+          "RoomieTab is free to start — one property, no credit card required. Running more than one? Pro is priced per property, so you only pay for the doors you actually manage."
       },
       {
         question: 'Does my tenant need to create an account?',
@@ -241,12 +241,15 @@ const Home = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div className="text-center lg:text-left">
+              <p className="text-sm font-semibold text-primary-700 uppercase tracking-wide mb-3">
+                Bill splitting for rent-by-the-room landlords
+              </p>
               <h1 className="text-4xl md:text-5xl font-bold text-secondary-900 mb-6">
                 Splitting the power bill shouldn't take your Sunday afternoon.
               </h1>
               <p className="text-xl text-secondary-600 mb-4 max-w-xl mx-auto lg:mx-0">
-                RoomieTab splits every shared bill to the exact day each tenant lived there, and shows
-                them the math — so nobody has to ask, and nobody has to argue.
+                RoomieTab splits every shared bill to the exact day each tenant lived there, shows
+                them the math on a no-login link, and chases it to settled.
               </p>
               <p className="text-sm text-secondary-500 mb-8">Free for your first property. No credit card.</p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
@@ -257,9 +260,17 @@ const Home = () => {
                   <span>{isAuthenticated ? 'Go to Dashboard' : 'Get Started Free'}</span>
                   <ArrowRight className="w-5 h-5" />
                 </Link>
+                <Link
+                  to="/demo-bill"
+                  className="btn-secondary text-lg px-8 py-3 flex items-center justify-center space-x-2"
+                >
+                  <span>See a live example bill</span>
+                </Link>
               </div>
             </div>
-            <BreakdownMockup />
+            <Link to="/demo-bill" className="block hover:opacity-90 transition-opacity duration-200">
+              <BreakdownMockup />
+            </Link>
           </div>
         </div>
       </section>
