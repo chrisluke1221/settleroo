@@ -10,9 +10,24 @@ import {
   Menu,
   X,
   DollarSign,
-  Tag
+  ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+
+// Logged-out nav is marketing-site anchor links into Home's own sections —
+// zero new pages, and it stops the header looking like a one-product stall
+// with a single "Pricing" link. Logged-in nav is the real in-product nav
+// (Dashboard/Properties) and keeps its icons; the marketing links don't —
+// icons on plain text links read as "internal tool," not marketing site.
+const loggedOutNavItems = [
+  { name: 'How it works', href: '/#how-it-works' },
+  { name: 'Pricing', to: '/pricing' },
+  { name: 'FAQ', href: '/#faq' },
+];
+const loggedInNavItems = [
+  { name: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
+  { name: 'Properties', to: '/properties', icon: Building2 },
+];
 
 const Header = () => {
   const { user, logout, isAuthenticated } = useAuth();
@@ -25,15 +40,35 @@ const Header = () => {
     navigate('/');
   };
 
-  // Logged-out visitors get the marketing page; authenticated landlords get
-  // their work queue and property list. Don't show "Home" to an
-  // authenticated user — it just bounces them back to /dashboard.
-  const navItems = isAuthenticated
-    ? [
-        { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-        { name: 'Properties', path: '/properties', icon: Building2 },
-      ]
-    : [{ name: 'Pricing', path: '/pricing', icon: Tag }];
+  const navItems = isAuthenticated ? loggedInNavItems : loggedOutNavItems;
+
+  const renderNavLink = (item, { mobile } = {}) => {
+    const Icon = item.icon;
+    const isActive = item.to && location.pathname === item.to;
+    const className = `flex items-center ${mobile ? 'space-x-3 px-3 py-2' : 'space-x-2 px-3 py-2'} rounded-lg text-sm font-medium transition-colors duration-200 ${
+      isActive
+        ? 'bg-primary-100 text-primary-700'
+        : 'text-secondary-600 hover:text-secondary-900 hover:bg-secondary-50'
+    }`;
+    const content = (
+      <>
+        {Icon && <Icon className="w-4 h-4" />}
+        <span>{item.name}</span>
+      </>
+    );
+    if (item.href) {
+      return (
+        <a key={item.name} href={item.href} className={className} onClick={() => mobile && setIsMobileMenuOpen(false)}>
+          {content}
+        </a>
+      );
+    }
+    return (
+      <Link key={item.name} to={item.to} className={className} onClick={() => mobile && setIsMobileMenuOpen(false)}>
+        {content}
+      </Link>
+    );
+  };
 
   return (
     <header className="bg-white/80 backdrop-blur-sm border-b border-secondary-200 sticky top-0 z-50">
@@ -48,29 +83,13 @@ const Header = () => {
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center space-x-8">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname === item.path;
-
-              return (
-                <Link
-                  key={item.name}
-                  to={item.path}
-                  className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 ${
-                    isActive
-                      ? 'bg-primary-100 text-primary-700'
-                      : 'text-secondary-600 hover:text-secondary-900 hover:bg-secondary-50'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{item.name}</span>
-                </Link>
-              );
-            })}
+          <nav className="hidden md:flex items-center space-x-2">
+            {navItems.map((item) => renderNavLink(item))}
           </nav>
 
-          {/* User Menu */}
+          {/* User Menu — primary CTA is always acquisition (Get started) or
+              the product itself (Dashboard), never plain authentication;
+              "Log in" is a de-emphasized text link, not the filled button. */}
           <div className="hidden md:flex items-center space-x-4">
             {isAuthenticated ? (
               <div className="flex items-center space-x-3">
@@ -91,13 +110,21 @@ const Header = () => {
                 </button>
               </div>
             ) : (
-              <Link
-                to="/login"
-                className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors duration-200"
-              >
-                <LogIn className="w-4 h-4" />
-                <span>Login</span>
-              </Link>
+              <>
+                <Link
+                  to="/login"
+                  className="text-sm font-medium text-secondary-600 hover:text-secondary-900 transition-colors duration-200"
+                >
+                  Log in
+                </Link>
+                <Link
+                  to="/login"
+                  className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors duration-200 font-medium text-sm"
+                >
+                  <span>Get started free</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </>
             )}
           </div>
 
@@ -123,26 +150,7 @@ const Header = () => {
             className="md:hidden border-t border-secondary-200 py-4"
           >
             <nav className="space-y-2">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = location.pathname === item.path;
-
-                return (
-                  <Link
-                    key={item.name}
-                    to={item.path}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className={`flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 ${
-                      isActive
-                        ? 'bg-primary-100 text-primary-700'
-                        : 'text-secondary-600 hover:text-secondary-900 hover:bg-secondary-50'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span>{item.name}</span>
-                  </Link>
-                );
-              })}
+              {navItems.map((item) => renderNavLink(item, { mobile: true }))}
 
               {isAuthenticated ? (
                 <div className="pt-4 border-t border-secondary-200">
@@ -166,14 +174,22 @@ const Header = () => {
                   </button>
                 </div>
               ) : (
-                <div className="pt-4 border-t border-secondary-200">
+                <div className="pt-4 border-t border-secondary-200 space-y-2">
                   <Link
                     to="/login"
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="flex items-center space-x-3 px-3 py-2 text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors duration-200"
+                    className="flex items-center space-x-3 px-3 py-2 bg-primary-600 text-white rounded-lg font-medium text-sm"
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                    <span>Get started free</span>
+                  </Link>
+                  <Link
+                    to="/login"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex items-center space-x-3 px-3 py-2 text-sm font-medium text-secondary-600 hover:text-secondary-900 transition-colors duration-200"
                   >
                     <LogIn className="w-4 h-4" />
-                    <span>Login</span>
+                    <span>Log in</span>
                   </Link>
                 </div>
               )}
