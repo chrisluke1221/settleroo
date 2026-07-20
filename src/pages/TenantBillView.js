@@ -90,6 +90,7 @@ const TenantBillView = () => {
 
   const totalPersonDays = split.bill_total_person_days;
   const otherPersonDays = totalPersonDays - split.person_days;
+  const otherTenantCount = split.bill_tenant_count - 1;
 
   return (
     <TenantShell propertyName={split.property_name} landlordName={split.landlord_name}>
@@ -146,6 +147,23 @@ const TenantBillView = () => {
             </div>
           ) : (
             <div className="divide-y divide-secondary-100 text-sm">
+              {otherTenantCount > 0 && (
+                <div className="flex items-start justify-between px-4 py-3">
+                  <div className="flex items-start space-x-2">
+                    <Users className="w-4 h-4 text-secondary-400 mt-0.5" />
+                    <div>
+                      <p className="text-secondary-900 font-medium">
+                        Sharing this bill with {otherTenantCount} other tenant{otherTenantCount === 1 ? '' : 's'}
+                      </p>
+                      <p className="text-secondary-500">
+                        Everyone pays for the exact days they lived here, not a flat split — so your share
+                        depends on how long you (and each other tenant) were here this period.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-start justify-between px-4 py-3">
                 <div className="flex items-start space-x-2">
                   <CalendarDays className="w-4 h-4 text-secondary-400 mt-0.5" />
@@ -170,7 +188,7 @@ const TenantBillView = () => {
 
               <div className="flex items-center justify-between px-4 py-3 bg-secondary-50">
                 <span className="text-secondary-700">
-                  Your person-days = {split.occupancy_days} days &times; {split.number_of_occupants} occupant
+                  Your tenant-days = {split.occupancy_days} days &times; {split.number_of_occupants} occupant
                   {split.number_of_occupants === 1 ? '' : 's'}
                 </span>
                 <span className="font-semibold text-secondary-900 whitespace-nowrap tabular-nums">{split.person_days}</span>
@@ -178,21 +196,21 @@ const TenantBillView = () => {
 
               <div className="flex items-center justify-between px-4 py-3">
                 <span className="text-secondary-700">
-                  Total person-days for this bill (all tenants combined)
+                  Total tenant-days for this bill (all tenants combined)
                 </span>
                 <span className="font-medium text-secondary-900 whitespace-nowrap tabular-nums">{totalPersonDays}</span>
               </div>
 
               {otherPersonDays > 0 && (
                 <div className="flex items-center justify-between px-4 py-3 text-secondary-500">
-                  <span>Other tenants' person-days ({totalPersonDays} &minus; {split.person_days})</span>
+                  <span>Other tenants' tenant-days ({totalPersonDays} &minus; {split.person_days})</span>
                   <span className="whitespace-nowrap tabular-nums">{otherPersonDays}</span>
                 </div>
               )}
 
               <div className="flex items-center justify-between px-4 py-3 bg-secondary-50">
                 <span className="text-secondary-700">
-                  Your share = {split.person_days} &divide; {totalPersonDays} person-days
+                  Your share = {split.person_days} &divide; {totalPersonDays} tenant-days
                 </span>
                 <span className="font-semibold text-secondary-900 whitespace-nowrap tabular-nums">{split.percentage}%</span>
               </div>
