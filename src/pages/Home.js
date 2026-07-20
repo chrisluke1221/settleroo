@@ -232,7 +232,7 @@ const Home = () => {
       */}
       <Helmet defer={false}>
         <title>{TITLE}</title>
-        <link rel="canonical" href="https://roomietab.netlify.app/" />
+        <link rel="canonical" href="https://settleroo.netlify.app/" />
         <script type="application/ld+json">{JSON.stringify(structuredData)}</script>
       </Helmet>
 

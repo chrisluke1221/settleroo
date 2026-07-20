@@ -77,7 +77,7 @@ const Pricing = () => {
     <div className="min-h-screen py-16">
       <Helmet defer={false}>
         <title>{TITLE}</title>
-        <link rel="canonical" href="https://roomietab.netlify.app/pricing" />
+        <link rel="canonical" href="https://settleroo.netlify.app/pricing" />
       </Helmet>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">

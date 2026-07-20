@@ -39,7 +39,7 @@ const DemoBill = () => {
     <TenantShell propertyName={DEMO.propertyName} landlordName={DEMO.landlordName}>
       <Helmet defer={false}>
         <title>{TITLE}</title>
-        <link rel="canonical" href="https://roomietab.netlify.app/demo-bill" />
+        <link rel="canonical" href="https://settleroo.netlify.app/demo-bill" />
       </Helmet>
 
       <div className="w-full max-w-lg space-y-4">
