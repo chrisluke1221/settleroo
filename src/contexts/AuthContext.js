@@ -16,14 +16,18 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
+    // onAuthStateChange is the single source of truth for both `user` and
+    // `loading` — its first firing (INITIAL_SESSION) only happens once the
+    // client has finished checking storage *and* parsing any magic-link URL
+    // fragment. A separate getSession() call used to race this: on a fresh
+    // magic-link redirect it could resolve first and flip loading=false
+    // while the real session was still being committed, which briefly made
+    // RequireAuth (src/App.js) see "not authenticated" and bounce to
+    // /login before the session landed a moment later.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user ?? null);
+        setLoading(false);
       }
     );
 

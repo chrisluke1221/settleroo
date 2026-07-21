@@ -79,12 +79,9 @@ const Dashboard = () => {
   };
 
   const handleRevokeLink = async (split) => {
-    if (!window.confirm(`Revoke ${split.tenant_name}'s current bill link? The old link will stop working immediately.`)) return;
-    try {
-      await revokeSplitToken(split.id);
-    } catch (err) {
-      console.error('Failed to revoke link:', err);
-    }
+    if (!window.confirm(`Revoke ${split.tenant_name}'s current bill link? The old link will stop working immediately.`)) return false;
+    await revokeSplitToken(split.id);
+    return true;
   };
 
   const handleSendEmail = async (split) => {

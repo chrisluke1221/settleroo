@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, ArrowRight, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,13 +14,24 @@ const GoogleIcon = () => (
 );
 
 const Login = () => {
-  const { signInWithGoogle, sendMagicLink } = useAuth();
+  const { signInWithGoogle, sendMagicLink, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [linkSent, setLinkSent] = useState(false);
+
+  // Defense in depth against the auth-loading race: if a session lands a
+  // moment after this page renders (e.g. a magic-link redirect that briefly
+  // bounced here before the session finished committing), send the user
+  // straight back into the app instead of leaving them stranded on /login.
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleGoogle = async () => {
     setGoogleSubmitting(true);
