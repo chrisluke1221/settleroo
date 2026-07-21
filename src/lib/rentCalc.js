@@ -85,3 +85,16 @@ export const ratesOverlap = (existingRates, effectiveFrom, effectiveTo) => {
     return aStart <= bEnd && bStart <= aEnd;
   });
 };
+
+// Same overlap predicate as ratesOverlap, but returns the conflicting rate
+// itself so the caller can tell the user exactly what they collided with
+// (rather than a bare "it overlaps" with no way to act on it).
+export const findOverlappingRate = (existingRates, effectiveFrom, effectiveTo) => {
+  const aStart = effectiveFrom;
+  const aEnd = effectiveTo || '9999-12-31';
+  return existingRates.find((r) => {
+    const bStart = r.effective_from;
+    const bEnd = r.effective_to || '9999-12-31';
+    return aStart <= bEnd && bStart <= aEnd;
+  });
+};

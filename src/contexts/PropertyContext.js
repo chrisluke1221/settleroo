@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from './AuthContext';
 import { computeSplits } from '../lib/billSplit';
-import { computeRentForPeriod, ratesOverlap } from '../lib/rentCalc';
+import { computeRentForPeriod, ratesOverlap, findOverlappingRate } from '../lib/rentCalc';
 import { formatLocalDate } from '../lib/dates';
 import { EntitlementError } from '../lib/entitlements';
 
@@ -488,6 +488,23 @@ export const PropertyProvider = ({ children }) => {
     return updatedBill;
   };
 
+  // due_date doesn't affect split amounts, so it stays editable even once a
+  // split has been paid — unlike updateBill above, which guards every field
+  // to protect the number a tenant may already be looking at. Most rent
+  // bills are auto-generated with due_date: null (see
+  // generateDueRentBillsInner), so this is the only way to add one later.
+  const updateBillDueDate = async (billId, dueDate) => {
+    const { data: updatedBill, error } = await supabase
+      .from('bills')
+      .update({ due_date: dueDate || null })
+      .eq('id', billId)
+      .select()
+      .single();
+    if (error) throw error;
+    setBills((prev) => prev.map((b) => (b.id === billId ? updatedBill : b)));
+    return updatedBill;
+  };
+
   // A rate is blocked from edit/delete once it overlaps a rent bill period
   // where this tenant's split is already paid — same immutability
   // principle as bills, applied to the rate that generated them.
@@ -522,7 +539,13 @@ export const PropertyProvider = ({ children }) => {
       : tenantRates;
 
     if (ratesOverlap(ratesForOverlapCheck, effectiveFrom, null)) {
-      throw new Error('This overlaps an existing rate for this tenant.');
+      const conflict = findOverlappingRate(ratesForOverlapCheck, effectiveFrom, null);
+      const conflictRange = conflict
+        ? `${conflict.effective_from} to ${conflict.effective_to || 'ongoing'}`
+        : 'an existing rate';
+      throw new Error(
+        `This overlaps the existing rate from ${conflictRange}. Delete or adjust that rate below, then try again.`
+      );
     }
 
     if (willAutoClose) {
@@ -938,6 +961,7 @@ export const PropertyProvider = ({ children }) => {
     reactivateTenant,
     createBillWithSplits,
     updateBill,
+    updateBillDueDate,
     recalculateBill,
     reissueBill,
     deleteBill,

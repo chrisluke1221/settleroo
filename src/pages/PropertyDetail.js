@@ -71,6 +71,7 @@ const PropertyDetail = () => {
     reactivateTenant,
     createBillWithSplits,
     updateBill,
+    updateBillDueDate,
     recalculateBill,
     reissueBill,
     deleteBill,
@@ -99,6 +100,10 @@ const PropertyDetail = () => {
   const [recalculatingBillId, setRecalculatingBillId] = useState(null);
   const [recalcError, setRecalcError] = useState('');
   const [confirmState, setConfirmState] = useState(null);
+  const [editingDueDateBillId, setEditingDueDateBillId] = useState(null);
+  const [dueDateDraft, setDueDateDraft] = useState('');
+  const [dueDateSubmitting, setDueDateSubmitting] = useState(false);
+  const [dueDateError, setDueDateError] = useState('');
 
   const ALLOWED_ATTACHMENT_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
   const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB
@@ -240,12 +245,9 @@ const PropertyDetail = () => {
   };
 
   const handleRevokeLink = async (split) => {
-    if (!window.confirm(`Revoke ${split.tenant_name}'s current bill link? The old link will stop working immediately.`)) return;
-    try {
-      await revokeSplitToken(split.id);
-    } catch (err) {
-      console.error('Failed to revoke link:', err);
-    }
+    if (!window.confirm(`Revoke ${split.tenant_name}'s current bill link? The old link will stop working immediately.`)) return false;
+    await revokeSplitToken(split.id);
+    return true;
   };
 
   const handleSendEmail = async (split) => {
@@ -522,6 +524,30 @@ const PropertyDetail = () => {
     setShowBillForm(true);
   };
 
+  // due_date has no effect on split amounts, so it's editable independent
+  // of hasPaidSplit — unlike the full bill-edit form below, which is
+  // blocked once a split is paid to protect the number a tenant may
+  // already be looking at.
+  const handleStartEditDueDate = (bill) => {
+    setEditingDueDateBillId(bill.id);
+    setDueDateDraft(bill.due_date || '');
+    setDueDateError('');
+  };
+
+  const handleSaveDueDate = async (billId) => {
+    setDueDateSubmitting(true);
+    setDueDateError('');
+    try {
+      await updateBillDueDate(billId, dueDateDraft || null);
+      setEditingDueDateBillId(null);
+    } catch (err) {
+      console.error('Failed to update due date:', err);
+      setDueDateError(err.message || 'Failed to update due date');
+    } finally {
+      setDueDateSubmitting(false);
+    }
+  };
+
   const handleCancelBillForm = () => {
     setShowBillForm(false);
     setEditingBillId(null);
@@ -601,10 +627,46 @@ const PropertyDetail = () => {
             <p className="font-semibold text-secondary-900 capitalize">
               {bill.bill_type} &mdash; <Money dollars={bill.total_amount} />
             </p>
-            <p className="text-sm text-secondary-500">
-              {bill.billing_period_start} to {bill.billing_period_end}
-              {bill.due_date && <> &middot; Due {bill.due_date}</>}
+            <p className="text-sm text-secondary-500 flex items-center flex-wrap gap-x-1">
+              <span>{bill.billing_period_start} to {bill.billing_period_end}</span>
+              {editingDueDateBillId === bill.id ? (
+                <span className="flex items-center space-x-1 ml-1">
+                  <span>&middot; Due</span>
+                  <input
+                    type="date"
+                    value={dueDateDraft}
+                    onChange={(e) => setDueDateDraft(e.target.value)}
+                    className="input-field text-xs py-0.5 px-1"
+                  />
+                  <button
+                    onClick={() => handleSaveDueDate(bill.id)}
+                    disabled={dueDateSubmitting}
+                    className="text-primary-600 hover:text-primary-700 font-medium disabled:opacity-50"
+                  >
+                    {dueDateSubmitting ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => setEditingDueDateBillId(null)}
+                    className="text-secondary-400 hover:text-secondary-600"
+                  >
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <span className="flex items-center space-x-1">
+                  {bill.due_date ? <span>&middot; Due {bill.due_date}</span> : <span>&middot; No due date set</span>}
+                  <button
+                    onClick={() => handleStartEditDueDate(bill)}
+                    className="text-primary-600 hover:text-primary-700 text-xs font-medium ml-1"
+                  >
+                    {bill.due_date ? 'Edit' : 'Add due date'}
+                  </button>
+                </span>
+              )}
             </p>
+            {editingDueDateBillId === bill.id && dueDateError && (
+              <p className="text-danger-600 text-xs mt-1">{dueDateError}</p>
+            )}
             {isUtility && (
               <p className="text-xs mt-1">
                 {bill.locked_at ? (
@@ -616,14 +678,16 @@ const PropertyDetail = () => {
             )}
           </div>
           <div className="flex items-center space-x-3">
-            <button
-              onClick={() => handleEditBill(bill)}
-              disabled={hasPaidSplit}
-              title={hasPaidSplit ? 'A tenant has already paid this bill — it can no longer be edited' : 'Edit bill'}
-              className="text-secondary-300 hover:text-primary-600 disabled:opacity-30 disabled:hover:text-secondary-300"
-            >
-              <Pencil className="w-4 h-4" />
-            </button>
+            {isUtility && (
+              <button
+                onClick={() => handleEditBill(bill)}
+                disabled={hasPaidSplit}
+                title={hasPaidSplit ? 'A tenant has already paid this bill — it can no longer be edited' : 'Edit bill'}
+                className="text-secondary-300 hover:text-primary-600 disabled:opacity-30 disabled:hover:text-secondary-300"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+            )}
             <button
               onClick={() => handleRecalculate(bill.id)}
               disabled={hasPaidSplit || recalculatingBillId === bill.id}
@@ -1216,7 +1280,7 @@ const PropertyDetail = () => {
                   </form>
                 )}
 
-                {rateHistoryFor(tenant.id).length > 1 && (
+                {rateHistoryFor(tenant.id).length > 0 && (
                   <ul className="mt-2 space-y-1">
                     {rateHistoryFor(tenant.id).map((r) => (
                       <li key={r.id} className="text-xs text-secondary-500 flex items-center justify-between">
