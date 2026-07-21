@@ -49,7 +49,19 @@ export const PropertyProvider = ({ children }) => {
 
   const clearEntitlementBlock = () => setEntitlementBlock(null);
 
-  const refresh = useCallback(async () => {
+  // Retried once, transparently, for a known-transient Supabase condition:
+  // PostgREST validates a JWT's `iat` against its own server clock,
+  // separate from the Auth (GoTrue) service that minted it. Right after a
+  // fresh sign-in the token is closest to its own `iat`, so any drift
+  // between the two backend services' clocks can surface as
+  // "JWT issued at future" for PostgREST requests fired in that narrow
+  // window — it isn't a real problem with the session and normally clears
+  // within a second or two, so surfacing it as a hard error the user can't
+  // act on (beyond clicking Try Again themselves) is worse than a silent
+  // retry.
+  const isClockSkewError = (err) => /issued at future/i.test(err?.message || '');
+
+  const refresh = useCallback(async (isRetry = false) => {
     if (!user) {
       setProperties([]);
       setTenants([]);
@@ -104,18 +116,31 @@ export const PropertyProvider = ({ children }) => {
         rentRates: rentRatesData ?? [],
         settings,
       });
+      setLoading(false);
     } catch (err) {
+      if (isClockSkewError(err) && !isRetry) {
+        // Stay in the loading state and quietly retry once — no error
+        // banner for a condition that clears itself before a real user
+        // could act on it.
+        setTimeout(() => refresh(true), 1500);
+        return;
+      }
       console.error('Failed to load property data:', err);
       setError(err.message || 'Failed to load your data');
-    } finally {
       setLoading(false);
     }
     // generateDueRentBills (like every other helper in this file besides
     // refresh) is a plain function recreated each render, not memoized —
     // it's intentionally not in this dependency list, same as every other
-    // context function this file calls without listing.
+    // context function this file calls without listing. Keyed on user?.id
+    // rather than the user object itself: onAuthStateChange (AuthContext.js)
+    // gives `user` a new object identity on every firing, even for the same
+    // signed-in session — keying on the object would re-run this effect (and
+    // its 6 parallel PostgREST queries) multiple times in quick succession
+    // right at sign-in, which is exactly the highest-risk window for the
+    // clock-skew condition above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user?.id]);
 
   const setNotifyOverdue = async (enabled) => {
     const { data, error } = await supabase
