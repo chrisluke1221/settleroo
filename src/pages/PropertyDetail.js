@@ -17,6 +17,7 @@ import {
   Inbox,
   AlertCircle,
   AlertTriangle,
+  Calendar,
 } from 'lucide-react';
 import { useProperties } from '../contexts/PropertyContext';
 import Money from '../components/Money';
@@ -627,45 +628,50 @@ const PropertyDetail = () => {
             <p className="font-semibold text-secondary-900 capitalize">
               {bill.bill_type} &mdash; <Money dollars={bill.total_amount} />
             </p>
-            <p className="text-sm text-secondary-500 flex items-center flex-wrap gap-x-1">
-              <span>{bill.billing_period_start} to {bill.billing_period_end}</span>
-              {editingDueDateBillId === bill.id ? (
-                <span className="flex items-center space-x-1 ml-1">
-                  <span>&middot; Due</span>
+            <p className="text-sm text-secondary-500">
+              {bill.billing_period_start} to {bill.billing_period_end}
+            </p>
+            {editingDueDateBillId === bill.id ? (
+              <div className="mt-2 flex flex-wrap items-end gap-2 bg-secondary-50 border border-secondary-200 rounded-lg px-3 py-2">
+                <div>
+                  <label className="block text-xs text-secondary-500 mb-1">Due date</label>
                   <input
                     type="date"
                     value={dueDateDraft}
                     onChange={(e) => setDueDateDraft(e.target.value)}
-                    className="input-field text-xs py-0.5 px-1"
+                    className="input-field text-sm py-1.5 w-auto"
                   />
-                  <button
-                    onClick={() => handleSaveDueDate(bill.id)}
-                    disabled={dueDateSubmitting}
-                    className="text-primary-600 hover:text-primary-700 font-medium disabled:opacity-50"
-                  >
-                    {dueDateSubmitting ? 'Saving...' : 'Save'}
-                  </button>
-                  <button
-                    onClick={() => setEditingDueDateBillId(null)}
-                    className="text-secondary-400 hover:text-secondary-600"
-                  >
-                    Cancel
-                  </button>
-                </span>
-              ) : (
-                <span className="flex items-center space-x-1">
-                  {bill.due_date ? <span>&middot; Due {bill.due_date}</span> : <span>&middot; No due date set</span>}
-                  <button
-                    onClick={() => handleStartEditDueDate(bill)}
-                    className="text-primary-600 hover:text-primary-700 text-xs font-medium ml-1"
-                  >
-                    {bill.due_date ? 'Edit' : 'Add due date'}
-                  </button>
-                </span>
-              )}
-            </p>
-            {editingDueDateBillId === bill.id && dueDateError && (
-              <p className="text-danger-600 text-xs mt-1">{dueDateError}</p>
+                </div>
+                <button
+                  onClick={() => handleSaveDueDate(bill.id)}
+                  disabled={dueDateSubmitting}
+                  className="btn-primary text-xs px-3 py-1"
+                >
+                  {dueDateSubmitting ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => setEditingDueDateBillId(null)}
+                  className="btn-secondary text-xs px-3 py-1"
+                >
+                  Cancel
+                </button>
+                {dueDateError && <p className="text-danger-600 text-xs w-full mt-1">{dueDateError}</p>}
+              </div>
+            ) : (
+              <div className="mt-1 flex items-center space-x-2">
+                <Calendar className="w-4 h-4 text-secondary-400" />
+                {bill.due_date ? (
+                  <span className="text-sm text-secondary-700">Due {bill.due_date}</span>
+                ) : (
+                  <span className="text-sm text-secondary-500">No due date set</span>
+                )}
+                <button
+                  onClick={() => handleStartEditDueDate(bill)}
+                  className="text-primary-600 hover:text-primary-700 text-xs font-medium"
+                >
+                  {bill.due_date ? 'Edit' : 'Add due date'}
+                </button>
+              </div>
             )}
             {isUtility && (
               <p className="text-xs mt-1">

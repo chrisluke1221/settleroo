@@ -53,3 +53,4 @@ The product's trust story is **"AI at the edges, deterministic math in the middl
 - `src/lib/` — Supabase client.
 - `supabase/migrations/` — SQL migrations. `supabase/functions/` — edge functions.
 - `docs/` — all specs, PRDs, reviews, handoffs.
+- **`docs/design-system.md`** — colors, typography, spacing, component primitives, and a design review checklist. Check any new UI against this before shipping.
