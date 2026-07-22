@@ -173,9 +173,14 @@ const BreakdownMockup = () => (
           <span className="text-secondary-600">Your days = 30 days &times; 1 occupant</span>
           <span className="font-medium text-secondary-900 tabular-nums">30</span>
         </div>
-        <div className="flex justify-between px-3 py-2 bg-secondary-50">
-          <span className="text-secondary-700">Your share = 30 &divide; 90 (everyone's days added together)</span>
-          <span className="font-semibold text-secondary-900 tabular-nums">33.33%</span>
+        <div className="px-3 py-2 bg-secondary-50">
+          <div className="flex justify-between">
+            <span className="text-secondary-700">Your share = 30 days &divide; 90 days</span>
+            <span className="font-semibold text-secondary-900 tabular-nums">33.33%</span>
+          </div>
+          <p className="text-secondary-400 mt-0.5" style={{ fontSize: '10px' }}>
+            90 = every tenant's days this period, added together
+          </p>
         </div>
       </div>
     </div>

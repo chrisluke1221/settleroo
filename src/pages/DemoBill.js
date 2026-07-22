@@ -99,8 +99,9 @@ const DemoBill = () => {
                         Sharing this bill with {otherTenantCount} other tenant{otherTenantCount === 1 ? '' : 's'}
                       </p>
                       <p className="text-secondary-500">
-                        Everyone pays for the exact days they lived here, not a flat split — so your share
-                        depends on how long you (and each other tenant) were here this period.
+                        If everyone's tenancy covers the whole period, this splits equally by headcount. If
+                        someone moved in or out partway through (like Marcus below), their share reflects
+                        only the days their tenancy actually covered — not a flat split.
                       </p>
                     </div>
                   </div>
@@ -160,11 +161,16 @@ const DemoBill = () => {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between px-4 py-3 bg-secondary-50">
-                <span className="text-secondary-700">
-                  Your share = {DEMO.occupancyDays} &divide; {DEMO.totalPersonDays} (everyone's days added together)
-                </span>
-                <span className="font-semibold text-secondary-900 whitespace-nowrap tabular-nums">{DEMO.percentage}%</span>
+              <div className="px-4 py-3 bg-secondary-50">
+                <div className="flex items-center justify-between">
+                  <span className="text-secondary-700">
+                    Your share = {DEMO.occupancyDays} days &divide; {DEMO.totalPersonDays} days
+                  </span>
+                  <span className="font-semibold text-secondary-900 whitespace-nowrap tabular-nums">{DEMO.percentage}%</span>
+                </div>
+                <p className="text-secondary-400 text-xs mt-0.5">
+                  {DEMO.totalPersonDays} = every tenant's days this period, added together
+                </p>
               </div>
 
               <div className="flex items-center justify-between px-4 py-3">
