@@ -2,7 +2,7 @@ import React from 'react';
 import { Helmet } from 'react-helmet-async';
 
 const TITLE = 'Privacy Policy — Settleroo';
-const LAST_UPDATED = '20 July 2026';
+const LAST_UPDATED = '22 July 2026';
 
 // Baseline, plain-language privacy policy — not a substitute for legal
 // advice, but real coverage rather than a placeholder. Its absence is a
@@ -32,9 +32,12 @@ const Privacy = () => (
         <section>
           <h2 className="text-lg font-semibold text-secondary-900 mb-2">Your tenants</h2>
           <p>
-            Tenants never create a Settleroo account. They access their own bill share through a single,
-            revocable link that shows only their own information — never another tenant's, and never your
-            full property or financial overview. You can revoke a tenant's link at any time.
+            Tenants never create a Settleroo account. They access their bill through a single, revocable
+            link. Because a shared bill (like electricity or water) isn't individually metered per room, that
+            link shows how many days each tenant on that specific bill occupied the property and what share
+            that works out to — so the split is provably fair, not just asserted. It never shows another
+            tenant's contact details, other bills, running balance, or anything about your account beyond
+            that one bill. You can revoke a tenant's link at any time.
           </p>
         </section>
 

@@ -9,7 +9,7 @@ Settleroo is a React + Supabase web app for landlords who rent by the room: it s
 3. `docs/2026-07-15-roomietab-v1.5-PRD.md` — prior build order (context).
 4. `docs/2026-07-19-roomietab-fable-product-critique.md` — product/pricing/positioning critique (informs the OPEN pricing question).
 
-**Current state:** Phase A (monetization spine) is merged to `main` (PR #7) and live. **Phase B (Operator plane + `npm run seed`) is the next branch to cut.** Start from the "Phase B" section of the canonical roadmap. **Build order: B → C → M → D → E** (M = marketing polish, can run in parallel once B is merged).
+**Current state:** Phase A (monetization spine), the rebrand to Settleroo, and several rounds of live UAT fixes (auth/session bugs, bill-breakdown clarity, a written design system) are merged and live — see `docs/2026-07-22-bill-transparency-and-roadmap.md` for the latest round and what's queued next. **Phase B (Operator plane + `npm run seed`) is still the next big structural phase**, paused while UAT/trust fixes took priority. Start from the "Phase B" section of the canonical roadmap when resumed. **Build order: B → C → M → D → E** (M = marketing polish, can run in parallel once B is merged).
 
 **Locked decisions (rev 2, 2026-07-19):** pricing = **per-property (~A$10/door/mo)**, no bills/month cap; ICP = **2–10 property operators**; Phase D ingestion first pass is **human-reviewed only (no auto-send)** — auto-send + trust ladder are Phase E, gated on eval calibration.
 
@@ -43,6 +43,7 @@ The product's trust story is **"AI at the edges, deterministic math in the middl
   - `CI=true npx react-scripts test`
   - `CI=true npm run build`
 - Doc naming: `YYYY-MM-DD-descriptive-name.md` in `docs/`.
+- **Any new requirement, feature decision, or scope change discussed in a session gets written into a dated `docs/YYYY-MM-DD-*.md` file in the same PR that implements it.** Decisions must not live only in a session's ephemeral local plan file — this repo is the durable, version-controlled record.
 - Pricing/limits live in the `plans` table (data, not code) — reprice by editing the row, not by hardcoding. Pricing metric is **per-property**: Stripe quantity = active property count (Phase C).
 
 ## Where things live

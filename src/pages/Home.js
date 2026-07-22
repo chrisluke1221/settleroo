@@ -39,7 +39,7 @@ const features = [
   {
     icon: Shield,
     title: 'Private by Design',
-    description: 'Tenants see only their own share, never each other\'s. Your properties are yours alone.'
+    description: 'Tenants only ever see the math for their own bill, never your other bills, balances, or contact details. Your properties are yours alone.'
   },
   {
     icon: Zap,
@@ -144,8 +144,11 @@ const faqGroups = [
 // built from the same design tokens — not a stock illustration, the actual product.
 const BreakdownMockup = () => (
   <div className="card max-w-sm w-full mx-auto">
-    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center mb-3">
-      <DollarSign className="w-5 h-5 text-primary-600" />
+    <div className="flex items-center justify-between mb-3">
+      <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
+        <DollarSign className="w-5 h-5 text-primary-600" />
+      </div>
+      <span className="text-xs font-medium text-secondary-500 bg-secondary-100 px-2 py-0.5 rounded-full">Example</span>
     </div>
     <p className="font-bold text-secondary-900 mb-1">Electricity Bill</p>
     <p className="text-xs text-secondary-500 mb-4">Hi Alice, here's exactly how your share was calculated.</p>
@@ -167,11 +170,11 @@ const BreakdownMockup = () => (
       </div>
       <div className="divide-y divide-secondary-100">
         <div className="flex justify-between px-3 py-2">
-          <span className="text-secondary-600">Your tenant-days = 30 days &times; 1</span>
+          <span className="text-secondary-600">Your days = 30 days &times; 1 occupant</span>
           <span className="font-medium text-secondary-900 tabular-nums">30</span>
         </div>
         <div className="flex justify-between px-3 py-2 bg-secondary-50">
-          <span className="text-secondary-700">Your share = 30 &divide; 90 tenant-days</span>
+          <span className="text-secondary-700">Your share = 30 &divide; 90 (everyone's days added together)</span>
           <span className="font-semibold text-secondary-900 tabular-nums">33.33%</span>
         </div>
       </div>
