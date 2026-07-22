@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, Receipt, Calendar, Users, CalendarDays, Paperclip } from 'lucide-react';
+import { CheckCircle, Receipt, Calendar, Users, CalendarDays, Paperclip, Mail } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import TenantShell from '../components/TenantShell';
 import Money from '../components/Money';
@@ -89,7 +89,6 @@ const TenantBillView = () => {
   }
 
   const totalPersonDays = split.bill_total_person_days;
-  const otherPersonDays = totalPersonDays - split.person_days;
   const otherTenantCount = split.bill_tenant_count - 1;
 
   return (
@@ -188,29 +187,39 @@ const TenantBillView = () => {
 
               <div className="flex items-center justify-between px-4 py-3 bg-secondary-50">
                 <span className="text-secondary-700">
-                  Your tenant-days = {split.occupancy_days} days &times; {split.number_of_occupants} occupant
+                  Your days this period = {split.occupancy_days} days &times; {split.number_of_occupants} occupant
                   {split.number_of_occupants === 1 ? '' : 's'}
                 </span>
                 <span className="font-semibold text-secondary-900 whitespace-nowrap tabular-nums">{split.person_days}</span>
               </div>
 
-              <div className="flex items-center justify-between px-4 py-3">
-                <span className="text-secondary-700">
-                  Total tenant-days for this bill (all tenants combined)
-                </span>
-                <span className="font-medium text-secondary-900 whitespace-nowrap tabular-nums">{totalPersonDays}</span>
-              </div>
-
-              {otherPersonDays > 0 && (
-                <div className="flex items-center justify-between px-4 py-3 text-secondary-500">
-                  <span>Other tenants' tenant-days ({totalPersonDays} &minus; {split.person_days})</span>
-                  <span className="whitespace-nowrap tabular-nums">{otherPersonDays}</span>
+              {Array.isArray(split.peer_splits) && split.peer_splits.length > 1 && (
+                <div className="px-4 py-3">
+                  <p className="text-xs font-semibold text-secondary-600 uppercase tracking-wide mb-2">
+                    Everyone's days this period
+                  </p>
+                  <div className="space-y-1.5">
+                    {split.peer_splits.map((peer) => {
+                      const isYou = peer.id === split.id;
+                      return (
+                        <div key={peer.id} className="flex items-center justify-between text-sm">
+                          <span className={isYou ? 'font-semibold text-secondary-900' : 'text-secondary-700'}>
+                            {isYou ? 'You' : peer.tenant_name}
+                          </span>
+                          <span className="text-secondary-500">
+                            {peer.occupancy_days} day{peer.occupancy_days === 1 ? '' : 's'}
+                          </span>
+                          <span className="font-medium text-secondary-900 tabular-nums">{peer.percentage}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
               <div className="flex items-center justify-between px-4 py-3 bg-secondary-50">
                 <span className="text-secondary-700">
-                  Your share = {split.person_days} &divide; {totalPersonDays} tenant-days
+                  Your share = {split.person_days} &divide; {totalPersonDays} (everyone's days added together)
                 </span>
                 <span className="font-semibold text-secondary-900 whitespace-nowrap tabular-nums">{split.percentage}%</span>
               </div>
@@ -272,6 +281,18 @@ const TenantBillView = () => {
           This confirms you've settled the amount directly with your landlord (e.g. bank transfer). It does not
           process a payment.
         </p>
+
+        {split.landlord_email && (
+          <p className="text-center mt-3">
+            <a
+              href={`mailto:${split.landlord_email}?subject=${encodeURIComponent(`Question about my ${split.bill_type} bill`)}`}
+              className="inline-flex items-center text-xs text-secondary-500 hover:text-primary-600"
+            >
+              <Mail className="w-3 h-3 mr-1" />
+              Something look wrong? Email {split.landlord_name}
+            </a>
+          </p>
+        )}
       </div>
     </TenantShell>
   );

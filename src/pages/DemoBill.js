@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { Receipt, Calendar, Users, CalendarDays, ArrowRight, Sparkles } from 'lucide-react';
+import { Receipt, Calendar, Users, CalendarDays, ArrowRight, Sparkles, Mail } from 'lucide-react';
 import TenantShell from '../components/TenantShell';
 import Money from '../components/Money';
 
@@ -13,11 +13,16 @@ const TITLE = 'See a real bill breakdown — Settleroo';
 // real, DB-backed version). This is intentionally not wired to a seeded DB
 // record yet; Phase B's seed script is the natural place to replace this
 // with a real link once it exists. Numbers below are hand-picked to land on
-// clean, self-consistent totals so nothing here looks arbitrary:
-// 30 person-days / 96 total = 31.25% of a $192.00 bill = exactly $60.00.
+// clean, self-consistent totals so nothing here looks arbitrary: Jasmine at
+// 30/96 person-days = 31.25% of a $192.00 bill = exactly $60.00. The other
+// three tenants are a deliberate mixed-occupancy example (two at full
+// occupancy, one who just moved in with only 6 days) — mirroring the real
+// TenantBillView's peer breakdown table so this demo shows exactly what a
+// tenant would see for a bill where occupancy isn't evenly split.
 const DEMO = {
   propertyName: 'Maple Share House',
   landlordName: 'Priya',
+  landlordEmail: 'priya@example.com',
   billType: 'electricity',
   periodStart: '2026-07-01',
   periodEnd: '2026-07-31',
@@ -31,10 +36,15 @@ const DEMO = {
   totalAmount: 192,
   owedAmount: 60,
   dueDate: '2026-08-14',
+  peerSplits: [
+    { tenantName: 'Jasmine', occupancyDays: 30, percentage: 31.25 },
+    { tenantName: 'Aiden', occupancyDays: 30, percentage: 31.25 },
+    { tenantName: 'Chloe', occupancyDays: 30, percentage: 31.25 },
+    { tenantName: 'Marcus', occupancyDays: 6, percentage: 6.25 },
+  ],
 };
 
 const DemoBill = () => {
-  const otherPersonDays = DEMO.totalPersonDays - DEMO.occupancyDays * DEMO.occupants;
   const otherTenantCount = DEMO.tenantCount - 1;
 
   return (
@@ -121,28 +131,38 @@ const DemoBill = () => {
 
               <div className="flex items-center justify-between px-4 py-3 bg-secondary-50">
                 <span className="text-secondary-700">
-                  Your tenant-days = {DEMO.occupancyDays} days &times; {DEMO.occupants} occupant
+                  Your days this period = {DEMO.occupancyDays} days &times; {DEMO.occupants} occupant
                 </span>
                 <span className="font-semibold text-secondary-900 whitespace-nowrap tabular-nums">
                   {DEMO.occupancyDays * DEMO.occupants}
                 </span>
               </div>
 
-              <div className="flex items-center justify-between px-4 py-3">
-                <span className="text-secondary-700">Total tenant-days for this bill (all tenants combined)</span>
-                <span className="font-medium text-secondary-900 whitespace-nowrap tabular-nums">{DEMO.totalPersonDays}</span>
-              </div>
-
-              {otherPersonDays > 0 && (
-                <div className="flex items-center justify-between px-4 py-3 text-secondary-500">
-                  <span>Other tenants' tenant-days ({DEMO.totalPersonDays} &minus; {DEMO.occupancyDays})</span>
-                  <span className="whitespace-nowrap tabular-nums">{otherPersonDays}</span>
+              <div className="px-4 py-3">
+                <p className="text-xs font-semibold text-secondary-600 uppercase tracking-wide mb-2">
+                  Everyone's days this period
+                </p>
+                <div className="space-y-1.5">
+                  {DEMO.peerSplits.map((peer) => {
+                    const isYou = peer.tenantName === DEMO.tenantName;
+                    return (
+                      <div key={peer.tenantName} className="flex items-center justify-between text-sm">
+                        <span className={isYou ? 'font-semibold text-secondary-900' : 'text-secondary-700'}>
+                          {isYou ? 'You' : peer.tenantName}
+                        </span>
+                        <span className="text-secondary-500">
+                          {peer.occupancyDays} day{peer.occupancyDays === 1 ? '' : 's'}
+                        </span>
+                        <span className="font-medium text-secondary-900 tabular-nums">{peer.percentage}%</span>
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
+              </div>
 
               <div className="flex items-center justify-between px-4 py-3 bg-secondary-50">
                 <span className="text-secondary-700">
-                  Your share = {DEMO.occupancyDays} &divide; {DEMO.totalPersonDays} tenant-days
+                  Your share = {DEMO.occupancyDays} &divide; {DEMO.totalPersonDays} (everyone's days added together)
                 </span>
                 <span className="font-semibold text-secondary-900 whitespace-nowrap tabular-nums">{DEMO.percentage}%</span>
               </div>
@@ -159,6 +179,16 @@ const DemoBill = () => {
           <p className="flex items-center text-sm text-secondary-600">
             <Calendar className="w-4 h-4 mr-2" />
             Due {DEMO.dueDate}
+          </p>
+
+          <p className="text-center mt-3">
+            <a
+              href={`mailto:${DEMO.landlordEmail}?subject=${encodeURIComponent(`Question about my ${DEMO.billType} bill`)}`}
+              className="inline-flex items-center text-xs text-secondary-500 hover:text-primary-600"
+            >
+              <Mail className="w-3 h-3 mr-1" />
+              Something look wrong? Email {DEMO.landlordName}
+            </a>
           </p>
         </div>
 

@@ -38,7 +38,7 @@ const faqs = [
   },
   {
     q: 'Is my data private?',
-    a: 'Yes. Every account is private by design — only you can see your properties, tenants, and bills, enforced at the database level, not just in the app. Tenant links show a tenant only their own share, nothing else.',
+    a: "Yes. Every account is private by design — only you can see your properties, tenants, and bills, enforced at the database level, not just in the app. A tenant's link shows how their bill share was worked out, including each tenant's occupancy days on that specific bill (since a shared bill isn't individually metered) — but never another tenant's contact details, other bills, or your account beyond that one bill.",
   },
 ];
 
