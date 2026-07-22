@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ChevronRight,
   Plus,
@@ -52,9 +52,30 @@ const UTILITY_TYPES = [
 
 const today = todayLocal;
 
+const TABS = [
+  { id: 'tenants', label: 'Tenants' },
+  { id: 'rent', label: 'Rent' },
+  { id: 'utilities', label: 'Utilities' },
+];
+
 const PropertyDetail = () => {
   const { propertyId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Deep-linkable so a link (e.g. from the dashboard) can land directly on a
+  // specific tab instead of always opening on Tenants — same ?param pattern
+  // Properties.js already uses for its own initial-state flag.
+  const [activeTab, setActiveTab] = useState(
+    TABS.some((t) => t.id === searchParams.get('tab')) ? searchParams.get('tab') : 'tenants'
+  );
+  const handleTabClick = (tabId) => {
+    setActiveTab(tabId);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tabId);
+      return next;
+    });
+  };
   const {
     properties,
     tenants,
@@ -293,6 +314,8 @@ const PropertyDetail = () => {
   const [rentBillForm, setRentBillForm] = useState(emptyRentBill);
   const [rentBillError, setRentBillError] = useState('');
   const [rentBillSubmitting, setRentBillSubmitting] = useState(false);
+  const [rentBillYearFilter, setRentBillYearFilter] = useState('all');
+  const [showOlderRentBills, setShowOlderRentBills] = useState(false);
 
   const [showPropertyForm, setShowPropertyForm] = useState(false);
   const [propertyForm, setPropertyForm] = useState({ name: '', address: '', description: '' });
@@ -628,7 +651,7 @@ const PropertyDetail = () => {
             <p className="font-semibold text-secondary-900 capitalize">
               {bill.bill_type} &mdash; <Money dollars={bill.total_amount} />
             </p>
-            <p className="text-sm text-secondary-500">
+            <p className="text-sm font-semibold text-secondary-900 mt-0.5">
               {bill.billing_period_start} to {bill.billing_period_end}
             </p>
             {editingDueDateBillId === bill.id ? (
@@ -899,6 +922,24 @@ const PropertyDetail = () => {
     );
   };
 
+  // Rent bills tend to accumulate fast (one per month, automatically) — show
+  // only the two most recent by default so a long history doesn't read as an
+  // unexplained wall of bills, with a year filter and an explicit toggle to
+  // see older ones instead of always dumping everything on screen at once.
+  const rentBillYears = Array.from(new Set(rentBills.map((b) => b.billing_period_start.slice(0, 4)))).sort(
+    (a, b) => b.localeCompare(a)
+  );
+  const yearFilteredRentBills =
+    rentBillYearFilter === 'all'
+      ? rentBills
+      : rentBills.filter((b) => b.billing_period_start.startsWith(rentBillYearFilter));
+  const sortedRentBills = [...yearFilteredRentBills].sort((a, b) =>
+    b.billing_period_start.localeCompare(a.billing_period_start)
+  );
+  const shouldCollapse = rentBillYearFilter === 'all' && !showOlderRentBills;
+  const visibleRentBills = shouldCollapse ? sortedRentBills.slice(0, 2) : sortedRentBills;
+  const hiddenRentBillsCount = shouldCollapse ? Math.max(0, sortedRentBills.length - 2) : 0;
+
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <ConfirmModal
@@ -977,7 +1018,24 @@ const PropertyDetail = () => {
         )}
       </div>
 
+      <div className="border-b border-secondary-200 mb-8 flex space-x-6">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => handleTabClick(tab.id)}
+            className={`pb-3 text-sm font-medium border-b-2 -mb-px transition-colors duration-200 ${
+              activeTab === tab.id
+                ? 'border-primary-600 text-primary-700'
+                : 'border-transparent text-secondary-500 hover:text-secondary-700'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {/* Tenants */}
+      {activeTab === 'tenants' && (
       <section className="mb-12">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-secondary-900 flex items-center">
@@ -1195,12 +1253,18 @@ const PropertyDetail = () => {
           </div>
         )}
       </section>
+      )}
 
       {/* Rent — its own area: per-tenant rates, and rent bills generated from them */}
+      {activeTab === 'rent' && (
       <section className="mb-12">
-        <h2 className="text-xl font-semibold text-secondary-900 flex items-center mb-4">
+        <h2 className="text-xl font-semibold text-secondary-900 flex items-center mb-1">
           <DollarSign className="w-5 h-5 mr-2" /> Rent
         </h2>
+        <p className="text-xs text-secondary-500 mb-4">
+          A rate's "effective from" date is when it starts applying — bills before that date use whatever
+          rate was in place before it.
+        </p>
 
         {activeTenants.length === 0 ? (
           <div className="card text-center py-12">
@@ -1308,18 +1372,33 @@ const PropertyDetail = () => {
 
         <div className="flex items-center justify-between mb-1">
           <h3 className="text-sm font-semibold text-secondary-500 uppercase tracking-wide">Rent bills</h3>
-          <button
-            onClick={() => setShowRentBillForm((s) => !s)}
-            disabled={activeTenants.length === 0}
-            className="btn-secondary flex items-center space-x-2 disabled:opacity-50"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Generate for a custom period</span>
-          </button>
+          <div className="flex items-center space-x-2">
+            {rentBillYears.length > 1 && (
+              <select
+                className="input-field text-sm py-1.5"
+                value={rentBillYearFilter}
+                onChange={(e) => setRentBillYearFilter(e.target.value)}
+              >
+                <option value="all">All years</option>
+                {rentBillYears.map((year) => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            )}
+            <button
+              onClick={() => setShowRentBillForm((s) => !s)}
+              disabled={activeTenants.length === 0}
+              className="btn-secondary flex items-center space-x-2 disabled:opacity-50"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Generate for a custom period</span>
+            </button>
+          </div>
         </div>
         <p className="text-xs text-secondary-500 mb-4">
-          Each calendar month generates automatically — stopping at move-out, picking up any rate change.
-          Use the button above only to backfill history or bill an out-of-cycle period.
+          Every month, a rent bill is created automatically using each tenant's active rate. If someone
+          moves out or their rate changes mid-month, it's prorated automatically. Use the button above only
+          to create a bill for an earlier period, or one that doesn't line up with a calendar month.
         </p>
 
         {showRentBillForm && (
@@ -1353,7 +1432,10 @@ const PropertyDetail = () => {
                 />
               </div>
             </div>
-            <p className="text-xs text-secondary-500">Each tenant is charged their own rate for this period — no shared split.</p>
+            <p className="text-xs text-secondary-500">
+              Unlike a utility bill, rent isn't split from one shared total — each tenant pays their own
+              agreed rate, prorated for any partial period.
+            </p>
             {rentBillError && <p className="text-danger-600 text-sm">{rentBillError}</p>}
             <div className="flex space-x-3">
               <button type="submit" disabled={rentBillSubmitting} className="btn-primary">
@@ -1371,12 +1453,29 @@ const PropertyDetail = () => {
             <Inbox className="w-10 h-10 text-secondary-300 mx-auto mb-3" />
             <p className="text-secondary-600">No rent bills yet — one generates automatically once a tenant has a rate set.</p>
           </div>
+        ) : sortedRentBills.length === 0 ? (
+          <div className="card text-center py-12">
+            <Inbox className="w-10 h-10 text-secondary-300 mx-auto mb-3" />
+            <p className="text-secondary-600">No rent bills in {rentBillYearFilter}.</p>
+          </div>
         ) : (
-          <div className="space-y-4">{rentBills.map(renderBillSplits)}</div>
+          <>
+            <div className="space-y-4">{visibleRentBills.map(renderBillSplits)}</div>
+            {hiddenRentBillsCount > 0 && (
+              <button
+                onClick={() => setShowOlderRentBills(true)}
+                className="mt-4 text-sm text-primary-600 hover:text-primary-700 font-medium"
+              >
+                Show older bills ({hiddenRentBillsCount})
+              </button>
+            )}
+          </>
         )}
       </section>
+      )}
 
       {/* Utilities — episodic bills, split by occupancy, unrelated to rent rates */}
+      {activeTab === 'utilities' && (
       <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-secondary-900 flex items-center">
@@ -1481,6 +1580,7 @@ const PropertyDetail = () => {
           <div className="space-y-4">{utilityBills.map(renderBillSplits)}</div>
         )}
       </section>
+      )}
     </div>
   );
 };

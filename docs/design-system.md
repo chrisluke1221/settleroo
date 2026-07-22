@@ -78,6 +78,34 @@ Compact variants of the two button classes exist for dense contexts (e.g. the re
 
 **`Money`** (`src/components/Money.js`) is the one number-formatting authority — every dollar amount renders through it (`tabular-nums font-semibold`). Never hand-format a money value with `toFixed(2)` on a screen.
 
+## Tab navigation
+
+New pattern, first used in `PropertyDetail.js`'s Tenants/Rent/Utilities
+redesign (2026-07-22) — no tab UI existed anywhere in the app before this.
+Reuse this spec rather than inventing a new one:
+
+```jsx
+<div className="border-b border-secondary-200 mb-8 flex space-x-6">
+  {tabs.map((tab) => (
+    <button
+      key={tab.id}
+      onClick={() => handleTabClick(tab.id)}
+      className={`pb-3 text-sm font-medium border-b-2 -mb-px transition-colors duration-200 ${
+        activeTab === tab.id
+          ? 'border-primary-600 text-primary-700'
+          : 'border-transparent text-secondary-500 hover:text-secondary-700'
+      }`}
+    >
+      {tab.label}
+    </button>
+  ))}
+</div>
+```
+
+Drive the initial active tab from a `?tab=` query param via `useSearchParams`
+(same pattern `Properties.js` already uses for its `?new=1` flag), and update
+the param on click so the tab is deep-linkable and survives a refresh.
+
 ## The inline-edit-field-chip pattern
 
 **New pattern, added because its absence is exactly what went wrong.** Any control that lets a user edit a single value in place (not a full modal/form) must be promoted into its own bounded container — never left as loose children inside a paragraph of surrounding text.
