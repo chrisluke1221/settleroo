@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { useAuth } from './AuthContext';
 import { computeSplits } from '../lib/billSplit';
 import { computeRentForPeriod, ratesOverlap, findOverlappingRate } from '../lib/rentCalc';
+import { earliestGenerationMonthForProperty, buildGenerationPeriods } from '../lib/rentGeneration';
 import { formatLocalDate } from '../lib/dates';
 import { EntitlementError } from '../lib/entitlements';
 
@@ -319,7 +320,8 @@ export const PropertyProvider = ({ children }) => {
   // tenantList override exists for callers (like loadSampleProperty) that
   // create tenants and immediately bill them in the same function — the
   // context's `tenants` closure won't include those until the next render.
-  const createBillWithSplits = async ({ propertyId, billType, totalAmount, periodStart, periodEnd, dueDate, tenantList = tenants }) => {
+  // CHR-24: description is required when billType === 'other'
+  const createBillWithSplits = async ({ propertyId, billType, totalAmount, periodStart, periodEnd, dueDate, description = null, tenantList = tenants }) => {
     await requireEntitlement('max_bills_per_month');
     const propertyTenants = tenantList.filter((t) => t.property_id === propertyId && t.status !== 'former');
     if (propertyTenants.length === 0) {
@@ -340,6 +342,8 @@ export const PropertyProvider = ({ children }) => {
         billing_period_start: periodStart,
         billing_period_end: periodEnd,
         due_date: dueDate || null,
+        // CHR-24: only persist description for 'other' type; null it out for all others
+        description: billType === 'other' ? (description || null) : null,
         landlord_id: user.id,
       })
       .select()
@@ -488,7 +492,8 @@ export const PropertyProvider = ({ children }) => {
   // Corrects a bill's own fields (fat-fingered amount, wrong dates, etc.)
   // and recomputes its splits to match. Same paid-split guard as
   // recalculateBill — a settled bill's numbers can't move under a tenant.
-  const updateBill = async ({ billId, billType, totalAmount, periodStart, periodEnd, dueDate }) => {
+  // CHR-24: description is required when billType === 'other'
+  const updateBill = async ({ billId, billType, totalAmount, periodStart, periodEnd, dueDate, description = null }) => {
     const existingSplits = billSplits.filter((s) => s.bill_id === billId);
     if (existingSplits.some((s) => s.status === 'paid')) {
       throw new Error('This bill has a payment already confirmed — it can no longer be edited.');
@@ -502,6 +507,8 @@ export const PropertyProvider = ({ children }) => {
         billing_period_start: periodStart,
         billing_period_end: periodEnd,
         due_date: dueDate || null,
+        // CHR-24: only persist description for 'other' type; null it out for all others
+        description: billType === 'other' ? (description || null) : null,
       })
       .eq('id', billId)
       .select()
@@ -714,12 +721,21 @@ export const PropertyProvider = ({ children }) => {
 
   // Runs once per login (from refresh, with freshly-fetched data rather than
   // this closure's state — see the comment in refresh()). For each property,
-  // auto-generates any missing calendar-month rent bill from the current
-  // month back up to 3 months, so a landlord catches up even after a while
-  // away. Stops charging a tenant from their move-out date via
-  // buildRentCharges; picks up a new rate automatically since it just reads
-  // whatever rate is in force for each day. Silently skips a property/period
-  // with nothing billable (no active tenant has a rate covering it yet).
+  // auto-generates any missing calendar-month rent bill from the earliest
+  // rent-rate effective_from date for that property's active tenants up to
+  // the current month. The lookback is capped at 12 months to align with the
+  // Australian financial year cycle and prevent runaway backfills on accounts
+  // that enter old rate data.
+  //
+  // "Silent history" rule: auto-email is only sent for the current calendar
+  // month. Historical backfill periods are generated silently (status stays
+  // pending, no email) — a landlord onboarding mid-year should not spam
+  // tenants with emails for rent they already paid months ago.
+  //
+  // Stops charging a tenant from their move-out date via buildRentCharges;
+  // picks up a new rate automatically since it just reads whatever rate is in
+  // force for each day. Silently skips a property/period with nothing
+  // billable (no active tenant has a rate covering it yet).
   const generateDueRentBills = async ({ properties: propsList, tenants: tenantsList, bills: billsList, rentRates: ratesList, settings }) => {
     if (rentGenerationInFlight.current) return;
     rentGenerationInFlight.current = true;
@@ -733,16 +749,16 @@ export const PropertyProvider = ({ children }) => {
   const generateDueRentBillsInner = async ({ propsList, tenantsList, billsList, ratesList, settings }) => {
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const periods = [];
-    for (let i = 3; i >= 0; i--) {
-      const start = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - i, 1);
-      const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
-      periods.push({ start: formatLocalDate(start), end: formatLocalDate(end) });
-    }
+    const currentMonthStartStr = formatLocalDate(currentMonthStart);
 
     for (const property of propsList) {
       const propertyTenants = tenantsList.filter((t) => t.property_id === property.id && t.status !== 'former');
       if (propertyTenants.length === 0) continue;
+
+      // Build the list of calendar-month periods to check for this property,
+      // anchored to the earliest rent rate rather than a hardcoded constant.
+      const startMonth = earliestGenerationMonthForProperty(propertyTenants, ratesList);
+      const periods = buildGenerationPeriods(startMonth, currentMonthStart);
 
       for (const period of periods) {
         const alreadyExists = billsList.some(
@@ -776,7 +792,12 @@ export const PropertyProvider = ({ children }) => {
         // against stale data within this same run.
         billsList = [...billsList, inserted.bill];
 
-        if (settings?.notify_rent !== false) {
+        // Silent-history rule: only auto-email for the current calendar month.
+        // Historical backfill periods are generated silently so a landlord
+        // onboarding mid-year doesn't spam tenants with emails for rent that
+        // was already paid months ago.
+        const isCurrentMonth = period.start === currentMonthStartStr;
+        if (isCurrentMonth && settings?.notify_rent !== false) {
           for (const split of inserted.splits) {
             const tenant = propertyTenants.find((t) => t.id === split.tenant_id);
             if (!tenant?.email) continue;

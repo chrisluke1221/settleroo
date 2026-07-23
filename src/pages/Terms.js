@@ -2,7 +2,7 @@ import React from 'react';
 import { Helmet } from 'react-helmet-async';
 
 const TITLE = 'Terms of Service — Settleroo';
-const LAST_UPDATED = '20 July 2026';
+const LAST_UPDATED = '23 July 2026';
 
 // Baseline terms — same reasoning as Privacy.js: real coverage now, refined
 // with real legal advice as the business grows, rather than left blank.
@@ -74,15 +74,19 @@ const Terms = () => (
 
         <section>
           <h2 className="text-lg font-semibold text-secondary-900 mb-2">Governing law</h2>
-          <p>These terms are governed by the laws of Victoria, Australia.</p>
+          <p>
+            These terms are governed by the laws of Australia. Where a dispute involves a matter
+            regulated by state or territory legislation, the law of the state or territory in which
+            the relevant property is located will apply to that matter.
+          </p>
         </section>
 
         <section>
           <h2 className="text-lg font-semibold text-secondary-900 mb-2">Contact</h2>
           <p>
             Questions about these terms:{' '}
-            <a href="mailto:chrisluke1221@gmail.com" className="text-primary-600 hover:text-primary-700">
-              chrisluke1221@gmail.com
+            <a href="mailto:settleroo@path000.com" className="text-primary-600 hover:text-primary-700">
+              settleroo@path000.com
             </a>
             .
           </p>

@@ -2,6 +2,10 @@ import React from 'react';
 
 // The tenant bill page never shares the landlord's app chrome — no nav,
 // no account name, no logout — since anyone holding the link can open it.
+// CHR-28: Removed the "Powered by Settleroo" footer badge. JTBD analysis:
+// tenants are not prospective landlords, so the viral-loop pattern borrowed
+// from B2C SaaS doesn't recruit anyone — it just adds noise to a page a
+// tenant visits once a month. The footer is kept minimal for clean UX.
 const TenantShell = ({ propertyName, landlordName, children }) => (
   <div className="min-h-screen flex flex-col bg-secondary-50">
     <header className="border-b border-secondary-200 bg-white">
@@ -11,9 +15,6 @@ const TenantShell = ({ propertyName, landlordName, children }) => (
       </div>
     </header>
     <main className="flex-1 flex items-center justify-center px-4 py-12">{children}</main>
-    <footer className="border-t border-secondary-200 py-4 text-center text-xs text-secondary-400">
-      Powered by Settleroo
-    </footer>
   </div>
 );
 
