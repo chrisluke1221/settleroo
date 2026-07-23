@@ -13,6 +13,8 @@ Settleroo is a React + Supabase web app for landlords who rent by the room: it s
 
 **Locked decisions (rev 2, 2026-07-19):** pricing = **per-property (~A$10/door/mo)**, no bills/month cap; ICP = **2–10 property operators**; Phase D ingestion first pass is **human-reviewed only (no auto-send)** — auto-send + trust ladder are Phase E, gated on eval calibration.
 
+**Multi-agent handoff:** development on this repo may be picked up by different AI agents/sessions across time (Claude Code, Manus.ai, or others) — there is no shared memory between them. The Settleroo project in Linear (team "CHRIS LU WORKSHOP") is the source of truth for what's done/in-progress/next; the docs-sync convention below is the durable decision record. That discipline is what keeps handoffs safe, not any individual agent's context. See `docs/2026-07-23-manus-handoff.md` for the full instructions given to Manus.ai, including its specific autonomy boundaries (propose-only migrations, PRs opened but not merged, strict ticket order).
+
 ## Hard guardrails — Always / Ask first / Never
 
 The product's trust story is **"AI at the edges, deterministic math in the middle."** These are enforced boundaries, not suggestions:
