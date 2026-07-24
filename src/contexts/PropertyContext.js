@@ -320,7 +320,8 @@ export const PropertyProvider = ({ children }) => {
   // tenantList override exists for callers (like loadSampleProperty) that
   // create tenants and immediately bill them in the same function — the
   // context's `tenants` closure won't include those until the next render.
-  const createBillWithSplits = async ({ propertyId, billType, totalAmount, periodStart, periodEnd, dueDate, tenantList = tenants }) => {
+  // CHR-24: description is required when billType === 'other'
+  const createBillWithSplits = async ({ propertyId, billType, totalAmount, periodStart, periodEnd, dueDate, description = null, tenantList = tenants }) => {
     await requireEntitlement('max_bills_per_month');
     const propertyTenants = tenantList.filter((t) => t.property_id === propertyId && t.status !== 'former');
     if (propertyTenants.length === 0) {
@@ -341,6 +342,8 @@ export const PropertyProvider = ({ children }) => {
         billing_period_start: periodStart,
         billing_period_end: periodEnd,
         due_date: dueDate || null,
+        // CHR-24: only persist description for 'other' type; null it out for all others
+        description: billType === 'other' ? (description || null) : null,
         landlord_id: user.id,
       })
       .select()
@@ -489,7 +492,8 @@ export const PropertyProvider = ({ children }) => {
   // Corrects a bill's own fields (fat-fingered amount, wrong dates, etc.)
   // and recomputes its splits to match. Same paid-split guard as
   // recalculateBill — a settled bill's numbers can't move under a tenant.
-  const updateBill = async ({ billId, billType, totalAmount, periodStart, periodEnd, dueDate }) => {
+  // CHR-24: description is required when billType === 'other'
+  const updateBill = async ({ billId, billType, totalAmount, periodStart, periodEnd, dueDate, description = null }) => {
     const existingSplits = billSplits.filter((s) => s.bill_id === billId);
     if (existingSplits.some((s) => s.status === 'paid')) {
       throw new Error('This bill has a payment already confirmed — it can no longer be edited.');
@@ -503,6 +507,8 @@ export const PropertyProvider = ({ children }) => {
         billing_period_start: periodStart,
         billing_period_end: periodEnd,
         due_date: dueDate || null,
+        // CHR-24: only persist description for 'other' type; null it out for all others
+        description: billType === 'other' ? (description || null) : null,
       })
       .eq('id', billId)
       .select()
