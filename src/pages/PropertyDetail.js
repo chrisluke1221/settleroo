@@ -38,7 +38,8 @@ const emptyTenant = {
   rentAmount: '',
   rentFrequency: 'monthly',
 };
-const emptyBill = { billType: 'electricity', totalAmount: '', periodStart: '', periodEnd: '', dueDate: '' };
+// CHR-24: description is required when billType === 'other'
+const emptyBill = { billType: 'electricity', totalAmount: '', periodStart: '', periodEnd: '', dueDate: '', description: '' };
 const emptyRentBill = { periodStart: '', periodEnd: '', dueDate: '' };
 const emptyRate = { amount: '', frequency: 'monthly', effectiveFrom: '' };
 
@@ -502,6 +503,11 @@ const PropertyDetail = () => {
       setBillError('Due date must be on or after the billing period end');
       return;
     }
+    // CHR-24: require a description when the utility type is "other"
+    if (billForm.billType === 'other' && !billForm.description.trim()) {
+      setBillError('Please describe what this "Other" bill is for — this helps you remember months later.');
+      return;
+    }
     setBillSubmitting(true);
     setBillError('');
     try {
@@ -513,6 +519,7 @@ const PropertyDetail = () => {
           periodStart: billForm.periodStart,
           periodEnd: billForm.periodEnd,
           dueDate: billForm.dueDate || null,
+          description: billForm.billType === 'other' ? billForm.description.trim() : null,
         });
       } else {
         await createBillWithSplits({
@@ -522,6 +529,7 @@ const PropertyDetail = () => {
           periodStart: billForm.periodStart,
           periodEnd: billForm.periodEnd,
           dueDate: billForm.dueDate || null,
+          description: billForm.billType === 'other' ? billForm.description.trim() : null,
         });
       }
       setBillForm(emptyBill);
@@ -542,6 +550,8 @@ const PropertyDetail = () => {
       periodStart: bill.billing_period_start,
       periodEnd: bill.billing_period_end,
       dueDate: bill.due_date || '',
+      // CHR-24: restore description when editing an existing bill
+      description: bill.description || '',
     });
     setEditingBillId(bill.id);
     setBillError('');
@@ -651,6 +661,10 @@ const PropertyDetail = () => {
             <p className="font-semibold text-secondary-900 capitalize">
               {bill.bill_type} &mdash; <Money dollars={bill.total_amount} />
             </p>
+            {/* CHR-24: show description for Other utility bills */}
+            {bill.bill_type === 'other' && bill.description && (
+              <p className="text-xs text-secondary-500 mt-0.5">{bill.description}</p>
+            )}
             <p className="text-sm font-semibold text-secondary-900 mt-0.5">
               {bill.billing_period_start} to {bill.billing_period_end}
             </p>
@@ -771,17 +785,21 @@ const PropertyDetail = () => {
               </button>
             </>
           ) : (
-            <label className="inline-flex items-center space-x-1 text-secondary-500 hover:text-primary-600 cursor-pointer">
-              <Paperclip className="w-4 h-4" />
-              <span>{uploadingBillId === bill.id ? 'Uploading...' : 'Attach bill (image/PDF)'}</span>
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp,application/pdf"
-                className="hidden"
-                disabled={uploadingBillId === bill.id}
-                onChange={(e) => handleAttachmentChange(bill.id, e)}
-              />
-            </label>
+            <>
+              <label className="inline-flex items-center space-x-1 text-secondary-500 hover:text-primary-600 cursor-pointer">
+                <Paperclip className="w-4 h-4" />
+                <span>{uploadingBillId === bill.id ? 'Uploading...' : 'Attach bill (image/PDF)'}</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,application/pdf"
+                  className="hidden"
+                  disabled={uploadingBillId === bill.id}
+                  onChange={(e) => handleAttachmentChange(bill.id, e)}
+                />
+              </label>
+              {/* CHR-26: state the file size limit clearly so landlords know before they try */}
+              <span className="text-xs text-secondary-400">Max 10 MB</span>
+            </>
           )}
         </div>
         {attachmentError && <p className="text-danger-600 text-xs mb-3">{attachmentError}</p>}
@@ -838,6 +856,7 @@ const PropertyDetail = () => {
                         onRevoke={handleRevokeLink}
                         onSetStatus={setBillSplitStatus}
                         onSendEmail={handleSendEmail}
+                        billHasAttachment={!!bill.attachment_path}
                       />
                     </div>
                   </td>
@@ -912,6 +931,7 @@ const PropertyDetail = () => {
                   onRevoke={handleRevokeLink}
                   onSetStatus={setBillSplitStatus}
                   onSendEmail={handleSendEmail}
+                  billHasAttachment={!!bill.attachment_path}
                 />
               </div>
             </div>
@@ -1559,6 +1579,23 @@ const PropertyDetail = () => {
                 />
               </div>
             </div>
+            {/* CHR-24: show a required description field when bill type is "Other" */}
+            {billForm.billType === 'other' && (
+              <div>
+                <label className="block text-sm font-medium text-secondary-900 mb-1.5">
+                  What is this bill for? <span className="text-danger-600">*</span>
+                </label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="e.g. Strata levy, pest control, garden maintenance"
+                  value={billForm.description}
+                  onChange={(e) => setBillForm((p) => ({ ...p, description: e.target.value }))}
+                  maxLength={200}
+                />
+                <p className="text-xs text-secondary-400 mt-1">This description will appear on the tenant's bill.</p>
+              </div>
+            )}
             {billError && <p className="text-danger-600 text-sm">{billError}</p>}
             <div className="flex space-x-3">
               <button type="submit" disabled={billSubmitting} className="btn-primary">
