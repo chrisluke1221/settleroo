@@ -13,12 +13,17 @@ import {
   UserX,
   ChevronDown,
   Sparkles,
+  Play,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const TITLE = 'Settleroo — From bill to settled, without you.';
 const DESCRIPTION =
   'Settleroo is the settlement layer for rent-by-the-room. It splits shared bills to the exact day each tenant occupied the property and chases them to settled — no spreadsheets, no awkward group chats.';
+
+// YouTube video IDs
+const GTM_VIDEO_ID = '290mRyeJmTQ';
+const WALKTHROUGH_VIDEO_ID = 'ZndZOKyCQws';
 
 const features = [
   {
@@ -205,6 +210,27 @@ const Marquee = () => (
   </div>
 );
 
+/**
+ * Responsive YouTube embed using Privacy-Enhanced Mode (youtube-nocookie.com).
+ * The 16:9 aspect-ratio wrapper ensures the iframe scales correctly on all
+ * screen sizes without JavaScript. rel=0 suppresses related-video suggestions;
+ * modestbranding=1 reduces the YouTube logo footprint.
+ */
+const YouTubeEmbed = ({ videoId, title, className = '' }) => (
+  <div
+    className={`relative w-full overflow-hidden rounded-xl shadow-2xl ${className}`}
+    style={{ paddingBottom: '56.25%' /* 16:9 */ }}
+  >
+    <iframe
+      className="absolute inset-0 w-full h-full"
+      src={`https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1`}
+      title={title}
+      allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      allowFullScreen
+    />
+  </div>
+);
+
 const FaqItem = ({ item, isOpen, onToggle }) => (
   <div className="card">
     <button onClick={onToggle} className="w-full flex items-center justify-between text-left">
@@ -258,7 +284,12 @@ const Home = () => {
         <script type="application/ld+json">{JSON.stringify(structuredData)}</script>
       </Helmet>
 
-      {/* Hero — pain first, mechanism second, the real product visible immediately */}
+      {/* ─── Hero ─────────────────────────────────────────────────────────────
+          Left: headline + sub-copy + CTAs
+          Right: 53-second cinematic GTM commercial — the strongest first
+          impression we can make. The static mockup moves to the
+          differentiator section below as a supporting element.
+      ──────────────────────────────────────────────────────────────────────── */}
       <section className="bg-secondary-50 py-16 md:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
@@ -290,6 +321,39 @@ const Home = () => {
                 </Link>
               </div>
             </div>
+
+            {/* GTM commercial — cinematic 53s ad, right side of hero */}
+            <div>
+              <YouTubeEmbed
+                videoId={GTM_VIDEO_ID}
+                title="Settleroo — From bill to settled, without you"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <Marquee />
+
+      {/* ─── Differentiator ───────────────────────────────────────────────────
+          Tenants never need an account — promoted to its own moment.
+          The BreakdownMockup now lives here as a visual anchor for the claim.
+      ──────────────────────────────────────────────────────────────────────── */}
+      <section className="py-16 bg-white border-b border-secondary-100">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div className="text-center lg:text-left">
+              <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center mx-auto lg:mx-0 mb-4">
+                <UserX className="w-6 h-6 text-primary-600" />
+              </div>
+              <h2 className="text-2xl md:text-3xl font-bold text-secondary-900 mb-3">
+                Your tenants never need to create an account.
+              </h2>
+              <p className="text-lg text-secondary-600">
+                No app to download, no password to set. Just a link with their share, and exactly how it
+                was worked out.
+              </p>
+            </div>
             <Link to="/demo-bill" className="block hover:opacity-90 transition-opacity duration-200">
               <BreakdownMockup />
             </Link>
@@ -297,25 +361,7 @@ const Home = () => {
         </div>
       </section>
 
-      <Marquee />
-
-      {/* The differentiator, promoted to its own moment rather than buried in the FAQ */}
-      <section className="py-14 bg-white border-b border-secondary-100">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-            <UserX className="w-6 h-6 text-primary-600" />
-          </div>
-          <h2 className="text-2xl md:text-3xl font-bold text-secondary-900 mb-3">
-            Your tenants never need to create an account.
-          </h2>
-          <p className="text-lg text-secondary-600 max-w-2xl mx-auto">
-            No app to download, no password to set. Just a link with their share, and exactly how it
-            was worked out.
-          </p>
-        </div>
-      </section>
-
-      {/* How it works — the loop in three steps */}
+      {/* ─── How it works ─────────────────────────────────────────────────── */}
       <section id="how-it-works" className="py-20 bg-secondary-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl md:text-4xl font-bold text-secondary-900 mb-12 text-center">How it works</h2>
@@ -339,8 +385,34 @@ const Home = () => {
         </div>
       </section>
 
-      {/* Features Section */}
-      <section className="py-20 bg-white">
+      {/* ─── Product Walkthrough ──────────────────────────────────────────────
+          Placed after "How it works" so visitors who understand the concept
+          can now see the real product in action before committing to sign up.
+          This is the consideration-stage moment: concept → evidence → action.
+      ──────────────────────────────────────────────────────────────────────── */}
+      <section className="py-20 bg-white border-b border-secondary-100">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center justify-center w-12 h-12 bg-primary-100 rounded-lg mb-4">
+              <Play className="w-6 h-6 text-primary-600" />
+            </div>
+            <h2 className="text-3xl md:text-4xl font-bold text-secondary-900 mb-3">
+              See it in action
+            </h2>
+            <p className="text-lg text-secondary-600 max-w-2xl mx-auto">
+              A two-minute walkthrough of the full landlord workflow — from adding your first property
+              to a tenant confirming payment, without you chasing anyone.
+            </p>
+          </div>
+          <YouTubeEmbed
+            videoId={WALKTHROUGH_VIDEO_ID}
+            title="Settleroo product walkthrough — full landlord workflow"
+          />
+        </div>
+      </section>
+
+      {/* ─── Features ─────────────────────────────────────────────────────── */}
+      <section className="py-20 bg-secondary-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold text-secondary-900 mb-4">
@@ -373,8 +445,11 @@ const Home = () => {
         </div>
       </section>
 
-      {/* What's new — momentum proof (shipped) plus a deliberately vague look-ahead,
-          no dates or named features so we're never selling a future we haven't built */}
+      {/* ─── What's new ───────────────────────────────────────────────────────
+          Momentum proof (shipped) plus a deliberately vague look-ahead —
+          no dates or named features so we're never selling a future we
+          haven't built.
+      ──────────────────────────────────────────────────────────────────────── */}
       <section className="py-20 bg-white">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-secondary-900 mb-10 text-center">Always moving</h2>
@@ -405,8 +480,10 @@ const Home = () => {
         </div>
       </section>
 
-      {/* FAQ Section — collapsible, split by who's asking, so it doesn't turn into
-          a wall of text as more questions get added */}
+      {/* ─── FAQ ──────────────────────────────────────────────────────────────
+          Collapsible, split by who's asking, so it doesn't turn into a wall
+          of text as more questions get added.
+      ──────────────────────────────────────────────────────────────────────── */}
       <section id="faq" className="py-20 bg-secondary-50">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-secondary-900 mb-10 text-center">Common questions</h2>
@@ -431,7 +508,7 @@ const Home = () => {
         </div>
       </section>
 
-      {/* CTA Section */}
+      {/* ─── CTA ──────────────────────────────────────────────────────────── */}
       <section className="py-20 bg-primary-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">

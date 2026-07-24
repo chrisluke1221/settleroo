@@ -183,8 +183,11 @@ const Dashboard = () => {
 
   if (properties.length === 0) {
     return (
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="card text-center py-16">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {/* Empty state: show the product walkthrough so new landlords know
+            exactly what to expect before they add their first property.
+            Reduces time-to-first-value by setting clear expectations. */}
+        <div className="text-center mb-8">
           <Inbox className="w-12 h-12 text-secondary-300 mx-auto mb-4" />
           <h1 className="text-xl font-semibold text-secondary-900 mb-2">Add your first property to get started</h1>
           <p className="text-secondary-600 mb-6">Once you add a property and tenants, bills you issue will show up here.</p>
@@ -197,6 +200,24 @@ const Dashboard = () => {
             </button>
           </div>
           {sampleError && <p className="text-danger-600 text-sm mt-3">{sampleError}</p>}
+        </div>
+
+        {/* Product walkthrough — shows new landlords the full workflow
+            before they commit to adding their first property */}
+        <div className="card p-6">
+          <p className="text-sm font-semibold text-secondary-500 uppercase tracking-wide mb-3 text-center">See how it works</p>
+          <div
+            className="relative w-full overflow-hidden rounded-lg"
+            style={{ paddingBottom: '56.25%' }}
+          >
+            <iframe
+              className="absolute inset-0 w-full h-full"
+              src="https://www.youtube-nocookie.com/embed/ZndZOKyCQws?rel=0&modestbranding=1"
+              title="Settleroo product walkthrough"
+              allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
         </div>
       </div>
     );
