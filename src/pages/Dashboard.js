@@ -43,6 +43,7 @@ const Dashboard = () => {
   const [actionError, setActionError] = useState('');
   const [filterPropertyId, setFilterPropertyId] = useState('all');
   const [filterType, setFilterType] = useState('all');
+  const [balanceSearch, setBalanceSearch] = useState('');
   const navigate = useNavigate();
 
   // CHR-34 Phase C: load subscription state to show 'Manage billing' for
@@ -190,13 +191,27 @@ const Dashboard = () => {
   // "Who owes me what in total" — grouped by tenant across every bill
   // (rent + utilities), not just the one in front of you. Follows the same
   // property/type filters as the queue below.
+  //
+  // CHR-46: no artificial cap (the old top-10 cutoff was invisible and
+  // silent at 30+ tenants — see docs/2026-07-31-multi-property-arrears-
+  // design-decision.md). Sorted by collection *severity*, not raw dollar
+  // amount: severity = maxDaysOverdue × totalOwedCents, so "$50 overdue by
+  // 60 days" ranks above "$500 not yet due" — urgency over size, per the
+  // research's collection-first framing. maxDaysOverdue is the worst
+  // overdue-days across that tenant's outstanding splits; 0 if nothing of
+  // theirs is overdue, which naturally sorts non-overdue tenants to the
+  // bottom (tie-broken by amount).
   const balanceByTenant = new Map();
   filteredWithBill.forEach(({ split, bill }) => {
     const key = split.tenant_id;
     const cents = Math.round(Number(split.owed_amount) * 100);
+    const daysOverdue = bill.due_date && bill.due_date < today
+      ? Math.round((new Date(today) - new Date(bill.due_date)) / 86400000)
+      : 0;
     const existing = balanceByTenant.get(key);
     if (existing) {
       existing.cents += cents;
+      existing.maxDaysOverdue = Math.max(existing.maxDaysOverdue, daysOverdue);
     } else {
       balanceByTenant.set(key, {
         tenantId: split.tenant_id,
@@ -204,10 +219,22 @@ const Dashboard = () => {
         propertyId: bill.property_id,
         propertyName: propertyById(bill.property_id)?.name,
         cents,
+        maxDaysOverdue: daysOverdue,
       });
     }
   });
-  const tenantBalances = Array.from(balanceByTenant.values()).sort((a, b) => b.cents - a.cents);
+  const allTenantBalances = Array.from(balanceByTenant.values()).sort((a, b) => {
+    const severityDiff = b.maxDaysOverdue * b.cents - a.maxDaysOverdue * a.cents;
+    return severityDiff !== 0 ? severityDiff : b.cents - a.cents;
+  });
+  const balanceSearchTerm = balanceSearch.trim().toLowerCase();
+  const tenantBalances = balanceSearchTerm
+    ? allTenantBalances.filter(
+        (row) =>
+          row.tenantName.toLowerCase().includes(balanceSearchTerm) ||
+          (row.propertyName || '').toLowerCase().includes(balanceSearchTerm)
+      )
+    : allTenantBalances;
 
   if (loading) {
     return (
@@ -356,22 +383,46 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {tenantBalances.length > 0 && (
+      {allTenantBalances.length > 0 && (
         <div className="mb-8">
-          <h2 className="text-sm font-semibold text-secondary-500 uppercase tracking-wide mb-3">Who owes you</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-secondary-500 uppercase tracking-wide">
+              Who owes you {allTenantBalances.length > 1 ? `(${allTenantBalances.length})` : ''}
+            </h2>
+            {/* CHR-46: search across the full, uncapped list — replaces the
+                old silent top-10 cutoff for portfolios with many tenants. */}
+            {allTenantBalances.length > 5 && (
+              <input
+                type="text"
+                value={balanceSearch}
+                onChange={(e) => setBalanceSearch(e.target.value)}
+                placeholder="Search tenant or property..."
+                className="input-field text-sm py-1.5 w-56"
+              />
+            )}
+          </div>
           <div className="card divide-y divide-secondary-100 p-0 overflow-hidden">
-            {tenantBalances.slice(0, 10).map((row) => (
-              <Link
-                key={`${row.propertyId}-${row.tenantName}`}
-                to={`/properties/${row.propertyId}/tenants/${row.tenantId}`}
-                className="flex items-center justify-between px-6 py-3 hover:bg-secondary-50 transition-colors duration-150"
-              >
-                <p className="font-medium text-secondary-900">
-                  {row.tenantName} <span className="text-secondary-400 font-normal">&middot; {row.propertyName}</span>
-                </p>
-                <Money cents={row.cents} className="text-secondary-900" />
-              </Link>
-            ))}
+            {tenantBalances.length === 0 ? (
+              <p className="text-sm text-secondary-500 px-6 py-4">No one matches "{balanceSearch}".</p>
+            ) : (
+              tenantBalances.map((row) => (
+                <Link
+                  key={`${row.propertyId}-${row.tenantName}`}
+                  to={`/properties/${row.propertyId}/tenants/${row.tenantId}`}
+                  className="flex items-center justify-between px-6 py-3 hover:bg-secondary-50 transition-colors duration-150"
+                >
+                  <p className="font-medium text-secondary-900">
+                    {row.tenantName} <span className="text-secondary-400 font-normal">&middot; {row.propertyName}</span>
+                    {row.maxDaysOverdue > 0 && (
+                      <span className="ml-2 text-xs font-semibold text-danger-600">
+                        {row.maxDaysOverdue} day{row.maxDaysOverdue === 1 ? '' : 's'} overdue
+                      </span>
+                    )}
+                  </p>
+                  <Money cents={row.cents} className="text-secondary-900" />
+                </Link>
+              ))
+            )}
           </div>
         </div>
       )}
