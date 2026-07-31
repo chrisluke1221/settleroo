@@ -83,6 +83,7 @@ const PropertyDetail = () => {
     tenants,
     bills,
     billSplits,
+    billSplitExceptions,
     rentRates,
     loading,
     error,
@@ -98,6 +99,8 @@ const PropertyDetail = () => {
     updateBillDueDate,
     recalculateBill,
     reissueBill,
+    addOccupancyException,
+    removeOccupancyException,
     deleteBill,
     setBillSplitStatus,
     recordPartialPayment,
@@ -129,6 +132,14 @@ const PropertyDetail = () => {
   const [dueDateDraft, setDueDateDraft] = useState('');
   const [dueDateSubmitting, setDueDateSubmitting] = useState(false);
   const [dueDateError, setDueDateError] = useState('');
+
+  // CHR-21/CHR-37: negotiated absence adjustment inline form, one bill open at a time
+  const emptyExceptionForm = { tenantId: '', exceptionStart: '', exceptionEnd: '', reason: '' };
+  const [exceptionFormBillId, setExceptionFormBillId] = useState(null);
+  const [exceptionForm, setExceptionForm] = useState(emptyExceptionForm);
+  const [exceptionError, setExceptionError] = useState('');
+  const [exceptionSubmitting, setExceptionSubmitting] = useState(false);
+  const [removingExceptionId, setRemovingExceptionId] = useState(null);
 
   const ALLOWED_ATTACHMENT_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
   const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB
@@ -629,6 +640,54 @@ const PropertyDetail = () => {
     }
   };
 
+  // CHR-21/CHR-37: record a negotiated absence adjustment on an unsent bill.
+  const handleStartAddException = (bill) => {
+    setExceptionFormBillId(bill.id);
+    setExceptionForm(emptyExceptionForm);
+    setExceptionError('');
+  };
+
+  const handleAddException = async (billId) => {
+    if (!exceptionForm.tenantId || !exceptionForm.exceptionStart || !exceptionForm.exceptionEnd) {
+      setExceptionError('Tenant and both dates are required');
+      return;
+    }
+    if (exceptionForm.exceptionEnd < exceptionForm.exceptionStart) {
+      setExceptionError('End date must be on or after the start date');
+      return;
+    }
+    setExceptionSubmitting(true);
+    setExceptionError('');
+    try {
+      await addOccupancyException({
+        billId,
+        tenantId: exceptionForm.tenantId,
+        exceptionStart: exceptionForm.exceptionStart,
+        exceptionEnd: exceptionForm.exceptionEnd,
+        reason: exceptionForm.reason.trim() || null,
+      });
+      setExceptionFormBillId(null);
+      setExceptionForm(emptyExceptionForm);
+    } catch (err) {
+      console.error('Failed to add occupancy exception:', err);
+      setExceptionError(err.message || 'Failed to add occupancy exception');
+    } finally {
+      setExceptionSubmitting(false);
+    }
+  };
+
+  const handleRemoveException = async (exceptionId) => {
+    setRemovingExceptionId(exceptionId);
+    try {
+      await removeOccupancyException(exceptionId);
+    } catch (err) {
+      console.error('Failed to remove occupancy exception:', err);
+      setExceptionError(err.message || 'Failed to remove occupancy exception');
+    } finally {
+      setRemovingExceptionId(null);
+    }
+  };
+
   const handleCancelBillForm = () => {
     setShowBillForm(false);
     setEditingBillId(null);
@@ -782,6 +841,110 @@ const PropertyDetail = () => {
                   <span className="text-primary-600">Draft &middot; updates automatically if tenants change</span>
                 )}
               </p>
+            )}
+            {/* CHR-21/CHR-37: occupancy exceptions only apply to occupancy-day
+                splitting, and only before a bill is sent (locked_at set) or
+                settled (paid split) — same guardrails as recalculate/reissue. */}
+            {isUtility && bill.bill_type !== 'internet' && (
+              <div className="mt-2">
+                {billSplitExceptions
+                  .filter((e) => e.bill_id === bill.id)
+                  .map((exception) => {
+                    const exceptionTenant = tenants.find((t) => t.id === exception.tenant_id);
+                    return (
+                      <div
+                        key={exception.id}
+                        className="flex items-center justify-between text-xs bg-secondary-50 border border-secondary-200 rounded px-2 py-1 mt-1"
+                      >
+                        <span className="text-secondary-700">
+                          {exceptionTenant?.name || 'Former tenant'} away {exception.exception_start} to {exception.exception_end}
+                          {exception.reason ? ` — ${exception.reason}` : ''}
+                        </span>
+                        {!bill.locked_at && !hasPaidSplit && (
+                          <button
+                            onClick={() => handleRemoveException(exception.id)}
+                            disabled={removingExceptionId === exception.id}
+                            className="text-secondary-300 hover:text-danger-600 ml-2 flex-shrink-0"
+                            title="Remove this exception"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                {!bill.locked_at && !hasPaidSplit && (
+                  exceptionFormBillId === bill.id ? (
+                    <div className="mt-2 flex flex-wrap items-end gap-2 bg-secondary-50 border border-secondary-200 rounded-lg px-3 py-2">
+                      <div>
+                        <label className="block text-xs text-secondary-500 mb-1">Tenant</label>
+                        <select
+                          value={exceptionForm.tenantId}
+                          onChange={(e) => setExceptionForm((f) => ({ ...f, tenantId: e.target.value }))}
+                          className="input-field text-sm py-1.5 w-auto"
+                        >
+                          <option value="">Select tenant</option>
+                          {tenants
+                            .filter((t) => t.property_id === propertyId && t.status !== 'former')
+                            .map((t) => (
+                              <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-secondary-500 mb-1">From</label>
+                        <input
+                          type="date"
+                          value={exceptionForm.exceptionStart}
+                          onChange={(e) => setExceptionForm((f) => ({ ...f, exceptionStart: e.target.value }))}
+                          className="input-field text-sm py-1.5 w-auto"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-secondary-500 mb-1">To</label>
+                        <input
+                          type="date"
+                          value={exceptionForm.exceptionEnd}
+                          onChange={(e) => setExceptionForm((f) => ({ ...f, exceptionEnd: e.target.value }))}
+                          className="input-field text-sm py-1.5 w-auto"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-secondary-500 mb-1">Reason (optional)</label>
+                        <input
+                          type="text"
+                          value={exceptionForm.reason}
+                          onChange={(e) => setExceptionForm((f) => ({ ...f, reason: e.target.value }))}
+                          placeholder="e.g. away for work"
+                          className="input-field text-sm py-1.5 w-auto"
+                        />
+                      </div>
+                      <button
+                        onClick={() => handleAddException(bill.id)}
+                        disabled={exceptionSubmitting}
+                        className="btn-primary text-xs px-3 py-1"
+                      >
+                        {exceptionSubmitting ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => setExceptionFormBillId(null)}
+                        className="btn-secondary text-xs px-3 py-1"
+                      >
+                        Cancel
+                      </button>
+                      {exceptionError && <p className="text-danger-600 text-xs w-full mt-1">{exceptionError}</p>}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleStartAddException(bill)}
+                      className="text-primary-600 hover:text-primary-700 text-xs font-medium mt-1"
+                    >
+                      + Record a negotiated absence
+                    </button>
+                  )
+                )}
+              </div>
             )}
           </div>
           <div className="flex items-center space-x-3 mt-0.5 flex-shrink-0">

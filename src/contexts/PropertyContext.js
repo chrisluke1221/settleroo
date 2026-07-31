@@ -23,6 +23,8 @@ export const PropertyProvider = ({ children }) => {
   const [tenants, setTenants] = useState([]);
   const [bills, setBills] = useState([]);
   const [billSplits, setBillSplits] = useState([]);
+  // CHR-21: negotiated absence adjustments, one row per (bill, tenant).
+  const [billSplitExceptions, setBillSplitExceptions] = useState([]);
   const [rentRates, setRentRates] = useState([]);
   const [landlordSettings, setLandlordSettings] = useState({ notify_overdue: true, notify_rent: true });
   const [loading, setLoading] = useState(false);
@@ -68,6 +70,7 @@ export const PropertyProvider = ({ children }) => {
       setTenants([]);
       setBills([]);
       setBillSplits([]);
+      setBillSplitExceptions([]);
       setRentRates([]);
       setLandlordSettings({ notify_overdue: true, notify_rent: true });
       return;
@@ -80,6 +83,7 @@ export const PropertyProvider = ({ children }) => {
         { data: tenantsData, error: tenantsError },
         { data: billsData, error: billsError },
         { data: billSplitsData, error: billSplitsError },
+        { data: billSplitExceptionsData, error: billSplitExceptionsError },
         { data: rentRatesData, error: rentRatesError },
         { data: settingsData },
       ] = await Promise.all([
@@ -87,6 +91,7 @@ export const PropertyProvider = ({ children }) => {
         supabase.from('tenants').select('*').order('created_at', { ascending: false }),
         supabase.from('bills').select('*').order('created_at', { ascending: false }),
         supabase.from('bill_splits').select('*'),
+        supabase.from('bill_split_exceptions').select('*'),
         supabase.from('rent_rates').select('*').order('effective_from', { ascending: true }),
         supabase.from('landlord_settings').select('*').maybeSingle(),
       ]);
@@ -95,12 +100,14 @@ export const PropertyProvider = ({ children }) => {
       if (tenantsError) throw tenantsError;
       if (billsError) throw billsError;
       if (billSplitsError) throw billSplitsError;
+      if (billSplitExceptionsError) throw billSplitExceptionsError;
       if (rentRatesError) throw rentRatesError;
 
       setProperties(propertiesData ?? []);
       setTenants(tenantsData ?? []);
       setBills(billsData ?? []);
       setBillSplits(billSplitsData ?? []);
+      setBillSplitExceptions(billSplitExceptionsData ?? []);
       setRentRates(rentRatesData ?? []);
       // No row yet just means the landlord never changed the defaults —
       // both toggles default to on until explicitly changed.
@@ -506,9 +513,17 @@ export const PropertyProvider = ({ children }) => {
   // that actually changed. tenantList defaults to context state, but callers
   // reacting to a just-applied tenant change pass the updated array directly
   // — setTenants() doesn't land in this closure's `tenants` until next render.
-  const applyRecomputedSplits = async (bill, tenantList = tenants) => {
+  const applyRecomputedSplits = async (bill, tenantList = tenants, exceptionsList = billSplitExceptions) => {
     const existingSplits = billSplits.filter((s) => s.bill_id === bill.id);
     const propertyTenants = tenantList.filter((t) => t.property_id === bill.property_id && t.status !== 'former');
+    // CHR-21: negotiated absence exceptions only apply to occupancy-day
+    // splitting — a flat per-person (internet) bill ignores occupancy days
+    // entirely, so exceptions have no meaning there and are never passed in.
+    // exceptionsList defaults to context state, but addOccupancyException/
+    // removeOccupancyException pass the just-updated array directly — same
+    // reason tenantList is overridable above: setBillSplitExceptions()
+    // doesn't land in this closure's `billSplitExceptions` until next render.
+    const exceptions = exceptionsList.filter((e) => e.bill_id === bill.id);
     // Round C: use the same split strategy as createBillWithSplits — internet
     // bills are flat-per-person, everything else is occupancy-day-weighted.
     const newSplits = usesFlatSplit(bill.bill_type)
@@ -522,7 +537,8 @@ export const PropertyProvider = ({ children }) => {
           propertyTenants,
           bill.billing_period_start,
           bill.billing_period_end,
-          bill.total_amount
+          bill.total_amount,
+          exceptions
         );
 
     const existingByTenantId = new Map(existingSplits.map((s) => [s.tenant_id, s]));
@@ -640,6 +656,65 @@ export const PropertyProvider = ({ children }) => {
     }
 
     return applyRecomputedSplits(bill);
+  };
+
+  // CHR-21/CHR-37: record a negotiated absence adjustment for a tenant on a
+  // bill, then immediately recompute that bill's splits so the effect is
+  // visible right away — same paid-split and lock guards as
+  // recalculateBill/reissueBill, since this is a variant of "recompute the
+  // split." The DB trigger (bill_split_exceptions_block_after_lock) enforces
+  // the lock guard server-side too, but checking here first gives a clean
+  // error message instead of a raw Postgres exception.
+  const addOccupancyException = async ({ billId, tenantId, exceptionStart, exceptionEnd, reason = null }) => {
+    const bill = bills.find((b) => b.id === billId);
+    if (!bill) throw new Error('Bill not found');
+    if (usesFlatSplit(bill.bill_type)) {
+      throw new Error('Occupancy exceptions don’t apply to flat per-person bills like internet.');
+    }
+    if (bill.locked_at) {
+      throw new Error('This bill has already been sent — reissue it before adding an exception.');
+    }
+    const existingSplits = billSplits.filter((s) => s.bill_id === billId);
+    if (existingSplits.some((s) => s.status === 'paid')) {
+      throw new Error('This bill has a payment already confirmed — it can no longer be adjusted.');
+    }
+
+    const { data, error } = await supabase
+      .from('bill_split_exceptions')
+      .insert({
+        bill_id: billId,
+        tenant_id: tenantId,
+        exception_start: exceptionStart,
+        exception_end: exceptionEnd,
+        reason,
+        landlord_id: user.id,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+
+    const updatedExceptions = [...billSplitExceptions, data];
+    setBillSplitExceptions(updatedExceptions);
+    await applyRecomputedSplits(bill, tenants, updatedExceptions);
+    return data;
+  };
+
+  // Removes an exception (landlord corrected a mistake before sending) and
+  // recomputes the bill back to what it would be without it.
+  const removeOccupancyException = async (exceptionId) => {
+    const exception = billSplitExceptions.find((e) => e.id === exceptionId);
+    if (!exception) throw new Error('Exception not found');
+    const bill = bills.find((b) => b.id === exception.bill_id);
+    if (bill?.locked_at) {
+      throw new Error('This bill has already been sent — reissue it before removing an exception.');
+    }
+
+    const { error } = await supabase.from('bill_split_exceptions').delete().eq('id', exceptionId);
+    if (error) throw error;
+
+    const updatedExceptions = billSplitExceptions.filter((e) => e.id !== exceptionId);
+    setBillSplitExceptions(updatedExceptions);
+    if (bill) await applyRecomputedSplits(bill, tenants, updatedExceptions);
   };
 
   // Corrects a bill's own fields (fat-fingered amount, wrong dates, etc.)
@@ -1267,6 +1342,7 @@ export const PropertyProvider = ({ children }) => {
     tenants,
     bills,
     billSplits,
+    billSplitExceptions,
     rentRates,
     landlordSettings,
     setNotifyOverdue,
@@ -1294,6 +1370,8 @@ export const PropertyProvider = ({ children }) => {
     updateBillDueDate,
     recalculateBill,
     reissueBill,
+    addOccupancyException,
+    removeOccupancyException,
     deleteBill,
     addRentRate,
     deleteRentRate,

@@ -93,6 +93,18 @@ columns in the schema: `rent_rates.amount_cents`, `plans.price_cents_monthly`,
 | `carried_over_amount` | numeric | **dollars**, default 0 — how much of `owed_amount` came from an earlier unresolved utility bill |
 | `carried_forward_into_split_id` | uuid | nullable, self-referencing FK → `bill_splits(id)` — set on a *source* split once its remainder has moved to a newer split; metadata only, never changes `owed_amount` on the source |
 
+## `public.bill_split_exceptions` (CHR-21 / CHR-36)
+| Column | Type | Notes |
+|---|---|---|
+| `id` | uuid PK | |
+| `bill_id` | uuid | → `bills(id)` |
+| `tenant_id` | uuid | → `tenants(id)` |
+| `exception_start` / `exception_end` | date | the negotiated absence sub-period; `exception_end >= exception_start` enforced |
+| `reason` | text | nullable, landlord's note |
+| `landlord_id` | uuid | → `auth.users(id)` |
+| `created_at` | timestamptz | |
+| Trigger | | `bill_split_exceptions_block_after_lock` rejects insert if the referenced `bills.locked_at` is already set — an exception can only be added before a bill is sent, same as every other post-send split guardrail |
+
 ## `public.rent_rates`
 | Column | Type | Notes |
 |---|---|---|

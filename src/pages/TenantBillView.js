@@ -322,14 +322,26 @@ const TenantBillView = () => {
                     {split.peer_splits.map((peer) => {
                       const isYou = peer.id === split.id;
                       return (
-                        <div key={peer.id} className="flex items-center justify-between text-sm">
-                          <span className={isYou ? 'font-semibold text-secondary-900' : 'text-secondary-700'}>
-                            {isYou ? 'You' : peer.tenant_name}
-                          </span>
-                          <span className="text-secondary-500">
-                            {peer.occupancy_days} day{peer.occupancy_days === 1 ? '' : 's'}
-                          </span>
-                          <span className="font-medium text-secondary-900 tabular-nums">{peer.percentage}%</span>
+                        <div key={peer.id}>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className={isYou ? 'font-semibold text-secondary-900' : 'text-secondary-700'}>
+                              {isYou ? 'You' : peer.tenant_name}
+                            </span>
+                            <span className="text-secondary-500">
+                              {peer.occupancy_days} day{peer.occupancy_days === 1 ? '' : 's'}
+                            </span>
+                            <span className="font-medium text-secondary-900 tabular-nums">{peer.percentage}%</span>
+                          </div>
+                          {/* CHR-21/CHR-39: a negotiated absence lowers this
+                              peer's share — show it plainly so the number
+                              never looks unexplained. */}
+                          {Array.isArray(peer.exceptions) && peer.exceptions.map((exception, i) => (
+                            <p key={i} className="text-xs text-secondary-500 pl-0 mt-0.5">
+                              {isYou ? 'Your' : `${peer.tenant_name}'s`} share was reduced for an agreed absence{' '}
+                              {exception.exception_start} to {exception.exception_end}
+                              {exception.reason ? ` (${exception.reason})` : ''}
+                            </p>
+                          ))}
                         </div>
                       );
                     })}

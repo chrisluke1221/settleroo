@@ -78,6 +78,69 @@ describe('computeSplits', () => {
     expect(couple.owed_amount).toBeGreaterThan(solo.owed_amount);
     expect(Math.round((solo.owed_amount + couple.owed_amount) * 100)).toBe(9000);
   });
+
+  // ─── CHR-21 / CHR-38: occupancy exceptions (negotiated absence) ────────────
+
+  test('no exceptions passed: byte-identical output to the baseline (regression-safe)', () => {
+    const tenants = [tenant({ name: 'A' }), tenant({ name: 'B' }), tenant({ name: 'C' })];
+    const withoutArg = computeSplits(tenants, '2026-01-01', '2026-01-31', 100);
+    const withEmptyArray = computeSplits(tenants, '2026-01-01', '2026-01-31', 100, []);
+    expect(withEmptyArray).toEqual(withoutArg);
+  });
+
+  test('tenant fully exempted for the whole period is excluded, and the others split the whole bill', () => {
+    const tenants = [tenant({ name: 'Exempted' }), tenant({ name: 'Pays' })];
+    const exceptions = [{ tenant_id: tenants[0].id, exception_start: '2026-01-01', exception_end: '2026-01-31' }];
+    const splits = computeSplits(tenants, '2026-01-01', '2026-01-31', 100, exceptions);
+    expect(splits).toHaveLength(1);
+    expect(splits[0].tenant_name).toBe('Pays');
+    expect(splits[0].owed_amount).toBe(100);
+  });
+
+  test('tenant exempted for a sub-period pays less and the redistributed amount lands on the other tenant', () => {
+    const tenants = [tenant({ name: 'Away' }), tenant({ name: 'Stayed' })];
+    // Away tenant misses 10 of the 31 days
+    const exceptions = [{ tenant_id: tenants[0].id, exception_start: '2026-01-01', exception_end: '2026-01-10' }];
+    const baseline = computeSplits(tenants, '2026-01-01', '2026-01-31', 100);
+    const adjusted = computeSplits(tenants, '2026-01-01', '2026-01-31', 100, exceptions);
+
+    const awayAdjusted = adjusted.find((s) => s.tenant_name === 'Away');
+    const stayedAdjusted = adjusted.find((s) => s.tenant_name === 'Stayed');
+    const awayBaseline = baseline.find((s) => s.tenant_name === 'Away');
+    const stayedBaseline = baseline.find((s) => s.tenant_name === 'Stayed');
+
+    expect(awayAdjusted.occupancy_days).toBe(awayBaseline.occupancy_days - 10);
+    expect(awayAdjusted.owed_amount).toBeLessThan(awayBaseline.owed_amount);
+    expect(stayedAdjusted.owed_amount).toBeGreaterThan(stayedBaseline.owed_amount);
+    // split-sum invariant: still sums to exactly the bill total
+    expect(Math.round((awayAdjusted.owed_amount + stayedAdjusted.owed_amount) * 100)).toBe(10000);
+  });
+
+  test('multiple tenants with their own (non-overlapping) exceptions still sum to exactly the bill total', () => {
+    for (let i = 0; i < 50; i++) {
+      const tenants = [tenant({ name: 'A' }), tenant({ name: 'B' }), tenant({ name: 'C' })];
+      const totalAmount = Math.round((1 + Math.random() * 999) * 100) / 100;
+      const exceptions = [
+        { tenant_id: tenants[0].id, exception_start: '2026-01-02', exception_end: '2026-01-05' },
+        { tenant_id: tenants[1].id, exception_start: '2026-01-20', exception_end: '2026-01-25' },
+      ];
+      const splits = computeSplits(tenants, '2026-01-01', '2026-01-31', totalAmount, exceptions);
+      const sum = splits.reduce((s, x) => s + Math.round(x.owed_amount * 100), 0);
+      expect(sum).toBe(Math.round(totalAmount * 100));
+    }
+  });
+
+  test('an exception outside the tenant\'s actual occupancy window has no effect', () => {
+    const tenants = [
+      tenant({ name: 'Moved out mid-month', move_out_date: '2026-01-15' }),
+      tenant({ name: 'Full month' }),
+    ];
+    // Exception is entirely after the exempted tenant moved out — no overlap
+    const exceptions = [{ tenant_id: tenants[0].id, exception_start: '2026-01-20', exception_end: '2026-01-25' }];
+    const baseline = computeSplits(tenants, '2026-01-01', '2026-01-31', 100);
+    const adjusted = computeSplits(tenants, '2026-01-01', '2026-01-31', 100, exceptions);
+    expect(adjusted).toEqual(baseline);
+  });
 });
 
 // ─── computeFlatSplitByHeadcount (internet bills) ────────────────────────────

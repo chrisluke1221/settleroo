@@ -37,7 +37,32 @@ const applyLargestRemainder = (shares, leftoverCents) => {
 
 // ─── Strategy 1: occupancy-day weighted ──────────────────────────────────────
 
-export const computeSplits = (propertyTenants, periodStart, periodEnd, totalAmount) => {
+// exceptions: optional array of { tenant_id, exception_start, exception_end }
+// — a negotiated absence adjustment (CHR-21). Exception days that overlap a
+// tenant's occupancy window are subtracted from their occupancy_days before
+// person_days is computed, which is sufficient to redistribute their reduced
+// share pro-rata across the other tenants: totalPersonDays shrinks by the
+// same amount, so every other tenant's (personDays / totalPersonDays)
+// percentage increases automatically. No separate redistribution step is
+// needed — this is the same proportional-split math, just over fewer
+// person-days for the exempted tenant, so the split-sum invariant holds for
+// free (see PROPOSED_20260731090000_occupancy_exceptions.sql for the schema
+// this is designed against).
+const excludedDaysForTenant = (tenantId, occStart, occEnd, exceptions) => {
+  if (!exceptions || exceptions.length === 0) return 0;
+  return exceptions
+    .filter((ex) => ex.tenant_id === tenantId)
+    .reduce((sum, ex) => {
+      const exStart = new Date(ex.exception_start);
+      const exEnd = new Date(ex.exception_end);
+      const overlapStart = exStart > occStart ? exStart : occStart;
+      const overlapEnd = exEnd < occEnd ? exEnd : occEnd;
+      const overlapDays = Math.round((overlapEnd - overlapStart) / 86400000) + 1;
+      return sum + Math.max(0, overlapDays);
+    }, 0);
+};
+
+export const computeSplits = (propertyTenants, periodStart, periodEnd, totalAmount, exceptions = []) => {
   const start = new Date(periodStart);
   const end = new Date(periodEnd);
 
@@ -47,7 +72,9 @@ export const computeSplits = (propertyTenants, periodStart, periodEnd, totalAmou
       const moveOut = tenant.move_out_date ? new Date(tenant.move_out_date) : null;
       const occStart = moveIn > start ? moveIn : start;
       const occEnd = moveOut && moveOut < end ? moveOut : end;
-      const occupancyDays = Math.max(0, Math.round((occEnd - occStart) / 86400000) + 1);
+      const rawOccupancyDays = Math.max(0, Math.round((occEnd - occStart) / 86400000) + 1);
+      const excludedDays = excludedDaysForTenant(tenant.id, occStart, occEnd, exceptions);
+      const occupancyDays = Math.max(0, rawOccupancyDays - excludedDays);
       const personDays = occupancyDays * (tenant.number_of_occupants || 1);
       return { tenant, occStart, occEnd, occupancyDays, personDays };
     })
