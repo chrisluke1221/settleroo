@@ -39,19 +39,24 @@ export const AuthProvider = ({ children }) => {
   // way. Google supplies a name via user_metadata; magic-link users are
   // asked for a name once in-app later (at their first bill), not at the
   // door.
-  const signInWithGoogle = async () => {
+  // redirectPath lets a caller (e.g. Login.js resuming pricing-page intent)
+  // send the user somewhere other than /dashboard after auth completes. It
+  // must be a relative same-origin path — callers are responsible for
+  // validating it, since it's interpolated into the URL Supabase redirects
+  // to and an unvalidated absolute URL here would be an open redirect.
+  const signInWithGoogle = async (redirectPath = '/dashboard') => {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/dashboard` },
+      options: { redirectTo: `${window.location.origin}${redirectPath}` },
     });
     if (error) throw error;
     return data;
   };
 
-  const sendMagicLink = async (email) => {
+  const sendMagicLink = async (email, redirectPath = '/dashboard') => {
     const { data, error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/dashboard` },
+      options: { emailRedirectTo: `${window.location.origin}${redirectPath}` },
     });
     if (error) throw error;
     return data;

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { Check, CheckCircle, Minus, Loader2, ExternalLink } from 'lucide-react';
@@ -84,6 +84,13 @@ const Pricing = () => {
   // Whether this account already has a Stripe-managed subscription
   const [hasStripeSubscription, setHasStripeSubscription] = useState(false);
   const [isProPlan, setIsProPlan] = useState(false);
+  // Whether the subscription fetch below has resolved (or was skipped
+  // because the user isn't authenticated) — gates the auto-resume effect
+  // so it can't fire before we actually know the user's plan status.
+  const [subscriptionChecked, setSubscriptionChecked] = useState(false);
+  // Guards against firing handleUpgrade() more than once (StrictMode
+  // double-invoke, re-renders) when resuming checkout after login.
+  const hasAutoFiredRef = useRef(false);
 
   // ?checkout=success is set by the success_url in create-checkout-session
   const checkoutSuccess = searchParams.get('checkout') === 'success';
@@ -103,17 +110,51 @@ const Pricing = () => {
   // Load the caller's subscription state so we know whether to show
   // "Upgrade" or "Manage billing"
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated) {
+      setSubscriptionChecked(true);
+      return;
+    }
     supabase
       .from('subscriptions')
       .select('plan_id, source, status')
       .single()
       .then(({ data }) => {
-        if (!data) return;
-        setHasStripeSubscription(data.source === 'stripe' && data.status === 'active');
-        setIsProPlan(data.plan_id === 'pro' && data.status === 'active');
+        if (data) {
+          setHasStripeSubscription(data.source === 'stripe' && data.status === 'active');
+          setIsProPlan(data.plan_id === 'pro' && data.status === 'active');
+        }
+        setSubscriptionChecked(true);
       });
   }, [isAuthenticated]);
+
+  // Resume checkout automatically after the user logs in from the
+  // logged-out "Start with Pro" CTA (see the Link below), instead of
+  // dropping them on /dashboard and making them find their way back here
+  // and click again. Login.js carries ?intent=upgrade&period=... through
+  // both the Google OAuth and magic-link redirect targets.
+  useEffect(() => {
+    if (!isAuthenticated || !subscriptionChecked) return;
+    if (searchParams.get('intent') !== 'upgrade') return;
+    if (hasAutoFiredRef.current) return;
+    if (isProPlan) return; // already Pro — "Manage billing" shows instead
+
+    const intentPeriod = searchParams.get('period');
+    if (intentPeriod === 'monthly' || intentPeriod === 'yearly') {
+      setPeriod(intentPeriod);
+    }
+
+    hasAutoFiredRef.current = true;
+    // Strip intent params before triggering checkout so a re-render or a
+    // later refresh/back-nav can't cause a second auto-fire.
+    setSearchParams((prev) => {
+      prev.delete('intent');
+      prev.delete('plan');
+      prev.delete('period');
+      return prev;
+    });
+    handleUpgrade();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, subscriptionChecked, isProPlan, searchParams, setSearchParams]);
 
   // Clear ?checkout=success from the URL after showing the banner so a
   // page refresh doesn't re-show it.
@@ -316,7 +357,10 @@ const Pricing = () => {
                       )}
                     </>
                   ) : (
-                    <Link to="/login" className="btn-primary w-full block text-center">
+                    <Link
+                      to={`/login?redirect=/pricing&intent=upgrade&plan=pro&period=${period}`}
+                      className="btn-primary w-full block text-center"
+                    >
                       Start with {plan.name}
                     </Link>
                   )

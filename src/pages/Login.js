@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, ArrowRight, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -16,6 +16,7 @@ const GoogleIcon = () => (
 const Login = () => {
   const { signInWithGoogle, sendMagicLink, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -23,21 +24,40 @@ const Login = () => {
   const [error, setError] = useState('');
   const [linkSent, setLinkSent] = useState(false);
 
+  // Where to send the user once auth completes. Only honor `redirect` if
+  // it's a same-origin relative path (starts with "/") — anything else is
+  // an open-redirect risk, so fall back to /dashboard instead. `intent`,
+  // `plan`, `period` let Pricing.js resume checkout automatically once the
+  // user lands back there (see Pricing.js's auto-resume effect).
+  const redirectParam = searchParams.get('redirect');
+  const redirectPath = redirectParam && redirectParam.startsWith('/')
+    ? (() => {
+        const qs = new URLSearchParams();
+        ['intent', 'plan', 'period'].forEach((key) => {
+          const value = searchParams.get(key);
+          if (value) qs.set(key, value);
+        });
+        const qsString = qs.toString();
+        return qsString ? `${redirectParam}?${qsString}` : redirectParam;
+      })()
+    : '/dashboard';
+
   // Defense in depth against the auth-loading race: if a session lands a
   // moment after this page renders (e.g. a magic-link redirect that briefly
   // bounced here before the session finished committing), send the user
   // straight back into the app instead of leaving them stranded on /login.
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard', { replace: true });
+      navigate(redirectPath, { replace: true });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, navigate]);
 
   const handleGoogle = async () => {
     setGoogleSubmitting(true);
     setError('');
     try {
-      await signInWithGoogle();
+      await signInWithGoogle(redirectPath);
       // Supabase redirects to Google; the browser navigates away from here.
     } catch (err) {
       console.error('Google sign-in error:', err);
@@ -55,7 +75,7 @@ const Login = () => {
     setIsSubmitting(true);
     setError('');
     try {
-      await sendMagicLink(email.trim());
+      await sendMagicLink(email.trim(), redirectPath);
       setLinkSent(true);
     } catch (err) {
       console.error('Magic link error:', err);
