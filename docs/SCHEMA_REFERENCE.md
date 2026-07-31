@@ -113,6 +113,7 @@ columns in the schema: `rent_rates.amount_cents`, `plans.price_cents_monthly`,
 | `landlord_id` | uuid PK | → `auth.users(id)` |
 | `notify_overdue` | boolean | default true |
 | `notify_rent` | boolean | default true |
+| `arrears_autopilot_enabled` | boolean | default false — CHR-41; unlocks the friendly→firm→final escalating reminder sequence in `send-overdue-reminders` instead of the flat single template |
 | `updated_at` | timestamptz | |
 
 ## `public.plans`
@@ -152,9 +153,9 @@ columns in the schema: `rent_rates.amount_cents`, `plans.price_cents_monthly`,
 
 ## `public.bill_events` (Phase B / CHR-29)
 Append-only, no UPDATE/DELETE. `id`, `bill_id` (→ `bills`), `event_type`
-(`check` list — see migration), `actor_type` (`'landlord'|'tenant'|'operator'|'system'`),
-`actor_id` (nullable uuid), `actor_token` (nullable text), `payload` (jsonb),
-`created_at`.
+(`check` list — see migration; CHR-41 added `'reminder_sent'`), `actor_type`
+(`'landlord'|'tenant'|'operator'|'system'`), `actor_id` (nullable uuid),
+`actor_token` (nullable text), `payload` (jsonb), `created_at`.
 
 ## `public.operator_audit_log` (Phase B / CHR-29)
 `id`, `operator_id` (→ `auth.users`), `action` (text), `target_account`

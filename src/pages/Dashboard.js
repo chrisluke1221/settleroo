@@ -26,6 +26,7 @@ const Dashboard = () => {
     landlordSettings,
     setNotifyOverdue,
     setNotifyRent,
+    setArrearsAutopilot,
     loadSampleProperty,
     setBillSplitStatus,
     recordPartialPayment,
@@ -37,6 +38,7 @@ const Dashboard = () => {
   } = useProperties();
   const [savingNotify, setSavingNotify] = useState(false);
   const [savingRentNotify, setSavingRentNotify] = useState(false);
+  const [savingAutopilot, setSavingAutopilot] = useState(false);
   const [loadingSample, setLoadingSample] = useState(false);
   const [sampleError, setSampleError] = useState('');
   const [sendingSplitId, setSendingSplitId] = useState(null);
@@ -108,6 +110,20 @@ const Dashboard = () => {
       console.error('Failed to update rent notification setting:', err);
     } finally {
       setSavingRentNotify(false);
+    }
+  };
+
+  // CHR-41: one opt-in unlocks the whole friendly→firm→final escalation
+  // sequence going forward — no per-stage confirm, matching the roadmap's
+  // "autopilot" framing and Chris's explicit approval-model call.
+  const handleToggleAutopilot = async () => {
+    setSavingAutopilot(true);
+    try {
+      await setArrearsAutopilot(!landlordSettings.arrears_autopilot_enabled);
+    } catch (err) {
+      console.error('Failed to update arrears autopilot setting:', err);
+    } finally {
+      setSavingAutopilot(false);
     }
   };
 
@@ -296,6 +312,15 @@ const Dashboard = () => {
           >
             <Bell className="w-4 h-4" />
             <span>Overdue reminders: {landlordSettings.notify_overdue ? 'On' : 'Off'}</span>
+          </button>
+          <button
+            onClick={handleToggleAutopilot}
+            disabled={savingAutopilot}
+            className="flex items-center space-x-2 text-sm text-secondary-500 hover:text-secondary-900 disabled:opacity-50"
+            title="Escalate overdue reminders automatically (friendly, then firm, then final) instead of repeating the same one"
+          >
+            <Bell className="w-4 h-4" />
+            <span>Arrears autopilot: {landlordSettings.arrears_autopilot_enabled ? 'On' : 'Off'}</span>
           </button>
           {/* CHR-34 Phase C: Manage billing link for Stripe Pro accounts */}
           {stripeSubscription && (

@@ -24,7 +24,7 @@ export const PropertyProvider = ({ children }) => {
   const [bills, setBills] = useState([]);
   const [billSplits, setBillSplits] = useState([]);
   const [rentRates, setRentRates] = useState([]);
-  const [landlordSettings, setLandlordSettings] = useState({ notify_overdue: true, notify_rent: true });
+  const [landlordSettings, setLandlordSettings] = useState({ notify_overdue: true, notify_rent: true, arrears_autopilot_enabled: false });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   // Set when a plan limit blocks an action; the global UpgradeModal renders
@@ -69,7 +69,7 @@ export const PropertyProvider = ({ children }) => {
       setBills([]);
       setBillSplits([]);
       setRentRates([]);
-      setLandlordSettings({ notify_overdue: true, notify_rent: true });
+      setLandlordSettings({ notify_overdue: true, notify_rent: true, arrears_autopilot_enabled: false });
       return;
     }
     setLoading(true);
@@ -104,7 +104,7 @@ export const PropertyProvider = ({ children }) => {
       setRentRates(rentRatesData ?? []);
       // No row yet just means the landlord never changed the defaults —
       // both toggles default to on until explicitly changed.
-      const settings = settingsData ?? { notify_overdue: true, notify_rent: true };
+      const settings = settingsData ?? { notify_overdue: true, notify_rent: true, arrears_autopilot_enabled: false };
       setLandlordSettings(settings);
 
       // Catch up on any rent that should have been generated since last
@@ -158,6 +158,21 @@ export const PropertyProvider = ({ children }) => {
     const { data, error } = await supabase
       .from('landlord_settings')
       .upsert({ landlord_id: user.id, notify_rent: enabled }, { onConflict: 'landlord_id' })
+      .select()
+      .single();
+    if (error) throw error;
+    setLandlordSettings(data);
+    return data;
+  };
+
+  // CHR-41: one toggle unlocks the whole friendly→firm→final escalation
+  // sequence going forward (Chris's call — not a per-stage approval). Off
+  // by default; the send-overdue-reminders cron falls back to the single
+  // original template when this is false, so opting out is a true no-op.
+  const setArrearsAutopilot = async (enabled) => {
+    const { data, error } = await supabase
+      .from('landlord_settings')
+      .upsert({ landlord_id: user.id, arrears_autopilot_enabled: enabled }, { onConflict: 'landlord_id' })
       .select()
       .single();
     if (error) throw error;
@@ -1271,6 +1286,7 @@ export const PropertyProvider = ({ children }) => {
     landlordSettings,
     setNotifyOverdue,
     setNotifyRent,
+    setArrearsAutopilot,
     loading,
     error,
     refresh,
